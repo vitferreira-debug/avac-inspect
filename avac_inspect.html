@@ -678,7 +678,7 @@ function checksHTML(e, secs, type, key) {
             <button class="t3${v==='nok'?' nok':''}" data-check="${key}_${it.k}" data-val="nok" onclick="setCheck('${type}','${key}','${it.k}','nok')">NOK</button>
             <button class="t3${v==='na'?' na':''}" data-check="${key}_${it.k}" data-val="na" onclick="setCheck('${type}','${key}','${it.k}','na')">N/A</button>
           </div>
-          <label style="cursor:pointer;width:28px;height:28px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">📷<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhoto('${type}','${key}','${it.k}',this)"></label>
+          <label style="cursor:pointer;width:28px;height:28px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">📷<input type="file" accept="image/*" style="display:none" onchange="addPhoto('${type}','${key}','${it.k}',this)"></label>
         </div>
       </div>${photoThumb}`;
     }).join('');
@@ -776,11 +776,20 @@ function scheduleSave(path, value) {
 
 window.setCheck = (type, key, ck, val) => {
   const arr = typeToArr(type);
-  if(!currentSession[arr]?.[key]) return;
+  if(!currentSession) return;
+  if(!currentSession[arr]) currentSession[arr] = {};
+  if(!currentSession[arr][key]) return;
+  if(!currentSession[arr][key].checks) currentSession[arr][key].checks = {};
   currentSession[arr][key].checks[ck] = val;
+  // Update buttons visually without re-render
+  document.querySelectorAll(`[data-check="${key}_${ck}"]`).forEach(b => {
+    const bv = b.getAttribute('data-val');
+    b.className = 't3' + (bv===val ? (' '+val) : '');
+  });
+  const lbl = document.querySelector(`[data-label="${key}_${ck}"]`);
+  if(lbl) lbl.className = 'check-label' + (val==='nok'?' is-nok':'');
+  updateTopScore();
   scheduleSave(dbPath(`${arr}/${key}/checks/${ck}`), val);
-  scheduleSave(dbPath('updatedAt'), Date.now());
-  renderInspection();
 };
 
 window.setMeta = (type, ekey, field, val) => {
