@@ -630,12 +630,12 @@ function eqMetaHTML(e, type, key) {
   const hasData = e.marca && e.modelo;
   return `<div class="eq-meta">
     <div class="eq-meta-grid">
-      <div><div class="eq-meta-label">Marca</div><input type="text" value="${e.marca||''}" placeholder="ex: Termobrasil" oninput="setMeta('${type}','${key}','marca',this.value)"></div>
-      <div><div class="eq-meta-label">Modelo</div><input type="text" value="${e.modelo||''}" placeholder="ex: FAH100" oninput="setMeta('${type}','${key}','modelo',this.value)"></div>
+      <div><div class="eq-meta-label">Marca</div><input type="text" value="${e.marca||''}" placeholder="ex: Termobrasil" onblur="setMeta('${type}','${key}','marca',this.value)"></div>
+      <div><div class="eq-meta-label">Modelo</div><input type="text" value="${e.modelo||''}" placeholder="ex: FAH100" onblur="setMeta('${type}','${key}','modelo',this.value)"></div>
     </div>
     <div class="eq-meta-grid">
-      <div><div class="eq-meta-label">Nº série</div><input type="text" value="${e.serie||''}" placeholder="opcional" oninput="setMeta('${type}','${key}','serie',this.value)"></div>
-      <div><div class="eq-meta-label">Ano inst.</div><input type="text" value="${e.ano||''}" placeholder="ex: 2019" oninput="setMeta('${type}','${key}','ano',this.value)"></div>
+      <div><div class="eq-meta-label">Nº série</div><input type="text" value="${e.serie||''}" placeholder="opcional" onblur="setMeta('${type}','${key}','serie',this.value)"></div>
+      <div><div class="eq-meta-label">Ano inst.</div><input type="text" value="${e.ano||''}" placeholder="ex: 2019" onblur="setMeta('${type}','${key}','ano',this.value)"></div>
     </div>
     <button class="ai-btn" ${!hasData?'disabled':''} id="aiBtn_${key}" onclick="lookupNominal('${type}','${key}')">✨ Dados nominais (IA)</button>
     <div id="nomArea_${key}">${e.nominal ? nominalHTML(e) : ''}</div>
@@ -703,7 +703,7 @@ function measuresHTML(e, fields, type, key) {
   const sid=`s_${key}_med`;
   const rows=fields.map(f=>`<div class="measure-row">
     <span class="measure-label">${f.l}</span>
-    <input class="measure-input" type="number" step="any" value="${m[f.k]||''}" placeholder="—" oninput="setMeasure('${type}','${key}','${f.k}',this.value)">
+    <input class="measure-input" type="number" step="any" value="${m[f.k]||''}" placeholder="—" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
     <span class="measure-unit">${f.u}</span>
   </div>`).join('');
   const comp=[
@@ -743,7 +743,7 @@ function powerHTML(power) {
   const sid='s_power';
   const rows=POWER_FIELDS.map(f=>`<div class="measure-row">
     <span class="measure-label">${f.l}</span>
-    <input class="measure-input" type="number" step="any" value="${power[f.k]||''}" placeholder="—" oninput="setPower('${f.k}',this.value)">
+    <input class="measure-input" type="number" step="any" value="${power[f.k]||''}" placeholder="—" onchange="setPower('${f.k}',this.value)">
     <span class="measure-unit">kW</span>
   </div>`).join('');
   const total=POWER_FIELDS.reduce((a,f)=>a+(parseFloat(power[f.k])||0),0);
@@ -758,7 +758,7 @@ function powerHTML(power) {
 }
 
 function noteHTML(e, type, key) {
-  return `<div style="border-bottom:1px solid var(--border)"><textarea class="note-area" placeholder="Notas / observações..." oninput="setNote('${type}','${key}',this.value)">${e.note||''}</textarea></div>`;
+  return `<div style="border-bottom:1px solid var(--border)"><textarea class="note-area" placeholder="Notas / observações..." onblur="setNote('${type}','${key}',this.value)">${e.note||''}</textarea></div>`;
 }
 
 // ── INTERACTIONS ──────────────────────────────────────────────────────────────
@@ -780,19 +780,7 @@ window.setCheck = (type, key, ck, val) => {
   currentSession[arr][key].checks[ck] = val;
   scheduleSave(dbPath(`${arr}/${key}/checks/${ck}`), val);
   scheduleSave(dbPath('updatedAt'), Date.now());
-  // Update buttons in place without re-rendering
-  const btns = document.querySelectorAll(`[data-check="${key}_${ck}"]`);
-  btns.forEach(b => {
-    const v = b.getAttribute('data-val');
-    b.className = 't3' + (v === 'ok' ? (val==='ok'?' ok':'') : v === 'nok' ? (val==='nok'?' nok':'') : (val==='na'?' na':''));
-  });
-  // Update label color
-  const label = document.querySelector(`[data-label="${key}_${ck}"]`);
-  if(label) label.className = 'check-label' + (val==='nok'?' is-nok':'');
-  // Update section pct
-  updateSectionPct(type, key);
-  updateTopScore();
-  updateChips();
+  renderInspection();
 };
 
 window.setMeta = (type, ekey, field, val) => {
@@ -811,7 +799,6 @@ window.setMeasure = (type, key, mk, val) => {
   if(!currentSession[arr][key].measures) currentSession[arr][key].measures={};
   currentSession[arr][key].measures[mk]=val;
   scheduleSave(dbPath(`${arr}/${key}/measures/${mk}`), val);
-  updateComputedFields(type, key);
 };
 
 window.setNote = (type, key, val) => {
@@ -825,7 +812,6 @@ window.setPower = (k, val) => {
   if(!currentSession.power) currentSession.power={};
   currentSession.power[k]=val;
   scheduleSave(dbPath(`power/${k}`), val);
-  updatePowerTotal();
 };
 
 function typeToArr(t) { return {uta:'utas',chiller:'chillers',bomba:'bombas',vaso:'vasos',vrv:'vrvs',quadro:'quadros'}[t]; }
