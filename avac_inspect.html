@@ -118,8 +118,9 @@ body{overflow-x:hidden}
 .measure-row{display:flex;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border);gap:8px}
 .measure-row:last-child{border-bottom:none}
 .measure-label{font-size:12px;color:var(--text2);flex:1}
-.measure-input{width:80px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;text-align:right;outline:none}
+.measure-input{width:90px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;text-align:right;outline:none;-moz-appearance:textfield}
 .measure-input:focus{border-color:var(--accent)}
+.measure-input::-webkit-outer-spin-button,.measure-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .measure-unit{font-size:11px;color:var(--text3);width:32px;text-align:right;flex-shrink:0}
 .measure-computed{font-size:12px;font-weight:600;color:var(--accent);text-align:right;flex-shrink:0}
 .note-area{width:100%;padding:11px 16px;background:var(--bg);border:none;border-top:1px solid var(--border);color:var(--text);font-size:13px;resize:none;min-height:72px;outline:none;font-family:inherit}
@@ -194,7 +195,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.5 — 25jun 22:45</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.6 — 25jun 23:00</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -705,7 +706,7 @@ function measuresHTML(e, fields, type, key) {
   const sid=`s_${key}_med`;
   const rows=fields.map(f=>`<div class="measure-row">
     <span class="measure-label">${f.l}</span>
-    <input class="measure-input" type="number" step="any" value="${m[f.k]||''}" placeholder="—" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
+    <input class="measure-input" type="text" inputmode="decimal" value="${m[f.k]||''}" placeholder="—" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
     <span class="measure-unit">${f.u}</span>
   </div>`).join('');
   const comp=[
@@ -745,7 +746,7 @@ function powerHTML(power) {
   const sid='s_power';
   const rows=POWER_FIELDS.map(f=>`<div class="measure-row">
     <span class="measure-label">${f.l}</span>
-    <input class="measure-input" type="number" step="any" value="${power[f.k]||''}" placeholder="—" onchange="setPower('${f.k}',this.value)">
+    <input class="measure-input" type="text" inputmode="decimal" value="${power[f.k]||''}" placeholder="—" onchange="setPower('${f.k}',this.value)">
     <span class="measure-unit">kW</span>
   </div>`).join('');
   const total=POWER_FIELDS.reduce((a,f)=>a+(parseFloat(power[f.k])||0),0);
