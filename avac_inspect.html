@@ -261,7 +261,7 @@ body{overflow-x:hidden}
   </div>
   <div class="insp-content" id="inspContent"></div>
   <div class="bottom-bar">
-    <button class="btn-secondary" onclick="showSessions()">←</button>
+    <button class="btn-secondary" onclick="goBack()">←</button>
     <button class="btn-primary" onclick="showReport()">📋 Relatório</button>
   </div>
 </div>
@@ -373,7 +373,7 @@ onAuthStateChanged(auth, user => {
     document.getElementById('userAvatar').style.display='none';
     document.getElementById('userName').textContent = localStorage.getItem('avac_display_name') || 'Auditor';
     document.getElementById('settingsBtn').style.display = 'flex';
-    showSessions();
+    loadSessions();
   } else {
     document.getElementById('userBadge').style.display = 'none';
     document.getElementById('settingsBtn').style.display = 'none';
@@ -385,7 +385,7 @@ onAuthStateChanged(auth, user => {
 });
 
 // ── SESSIONS ─────────────────────────────────────────────────────────────────
-window.showSessions = async () => {
+async function loadSessions() {
   showPage('pgSessions');
   document.getElementById('tbTitle').textContent = 'AVAC Inspect';
   document.getElementById('tbSub').textContent = localStorage.getItem('avac_display_name') || 'Auditor';
@@ -955,8 +955,9 @@ window.exportText = () => {
 };
 
 // ── NAV ───────────────────────────────────────────────────────────────────────
+window.goBack = () => { currentSessionId=null; currentSession=null; if(dbListener){dbListener();dbListener=null;} loadSessions(); };
 window.showPage = id => { document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0,0); };
-window.showSessions = () => { currentSessionId=null; currentSession=null; if(dbListener){dbListener();dbListener=null;} showSessions(); };
+window.showSessions = () => { currentSessionId=null; currentSession=null; if(dbListener){dbListener();dbListener=null;} loadSessions(); };
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
 window.showToast = (msg,type) => { const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type==='ok'?' tok':type==='err'?' terr':' tinf');setTimeout(()=>t.classList.remove('show'),2500); };
