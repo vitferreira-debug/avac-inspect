@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f172a">
+<title>AVAC Inspect</title>
+<style>
+:root{--bg:#0f172a;--surface:#1e293b;--surface2:#273347;--border:#334155;--accent:#38bdf8;--accent-dim:#0c4a6e;--accent-text:#e0f2fe;--text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;--ok:#22c55e;--ok-bg:#052e16;--ok-border:#166534;--nok:#ef4444;--nok-bg:#450a0a;--nok-border:#991b1b;--warn:#f59e0b;--warn-bg:#1c0f00;--radius:10px;--rsm:6px}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:15px}
+body{overflow-x:hidden}
+
+.topbar{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;min-height:54px}
+.topbar-left{display:flex;align-items:center;gap:10px}
+.logo{width:32px;height:32px;background:var(--accent-dim);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.topbar-title{font-size:14px;font-weight:600}
+.topbar-sub{font-size:11px;color:var(--text2);margin-top:1px}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.score-pill{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:var(--surface2);color:var(--text2);border:1px solid var(--border);min-width:52px;text-align:center}
+.score-pill.good{background:var(--ok-bg);color:var(--ok);border-color:var(--ok-border)}
+.score-pill.warn{background:var(--warn-bg);color:var(--warn);border-color:#92400e}
+.score-pill.bad{background:var(--nok-bg);color:var(--nok);border-color:var(--nok-border)}
+.settings-btn{width:32px;height:32px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+
+.page{display:none;padding-top:54px;min-height:100vh}
+.page.active{display:block}
+
+/* AUTH */
+.auth-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 54px);padding:32px 24px;text-align:center}
+.auth-icon{font-size:48px;margin-bottom:16px}
+.auth-title{font-size:22px;font-weight:700;margin-bottom:8px}
+.auth-sub{font-size:14px;color:var(--text2);margin-bottom:32px;line-height:1.6}
+.auth-btn{display:flex;align-items:center;gap:10px;padding:13px 24px;background:white;color:#1a1a1a;border:none;border-radius:var(--rsm);font-size:14px;font-weight:600;cursor:pointer;width:100%;max-width:280px;justify-content:center}
+.auth-btn img{width:20px;height:20px}
+.sync-status{font-size:11px;color:var(--text3);margin-top:12px;display:flex;align-items:center;gap:5px;justify-content:center}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0}
+.sync-dot.ok{background:var(--ok)}
+.sync-dot.sync{background:var(--accent)}
+.sync-dot.err{background:var(--nok)}
+
+/* SETUP */
+.setup-hero{padding:24px 20px 0}
+.setup-hero h1{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.setup-hero p{font-size:13px;color:var(--text2);margin-top:5px}
+.session-list{padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.session-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+.session-card:active{opacity:.7}
+.session-info{flex:1}
+.session-name{font-size:14px;font-weight:600}
+.session-meta{font-size:11px;color:var(--text2);margin-top:2px}
+.session-score{font-size:13px;font-weight:700;color:var(--ok)}
+.new-session-btn{width:calc(100% - 32px);margin:4px 16px;padding:13px;background:var(--accent);color:#0c1a2e;border:none;border-radius:var(--rsm);font-size:14px;font-weight:700;cursor:pointer}
+.setup-form{padding:16px;display:flex;flex-direction:column;gap:10px}
+.field-group{display:flex;flex-direction:column;gap:4px}
+.field-group label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.field-group input,.field-group select{width:100%;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none;-webkit-appearance:none}
+.field-group input:focus,.field-group select:focus{border-color:var(--accent)}
+.sec-divider{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px}
+.counter-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.counter-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);padding:10px 12px}
+.counter-label{font-size:12px;color:var(--text2);margin-bottom:6px}
+.counter-row{display:flex;align-items:center;gap:8px}
+.cbtn{width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}
+.cval{font-size:20px;font-weight:700;min-width:24px;text-align:center;flex:1}
+.cval.zero{color:var(--text3)}
+.start-btn{width:100%;padding:14px;background:var(--accent);color:#0c1a2e;border:none;border-radius:var(--radius);font-size:15px;font-weight:700;cursor:pointer;margin-top:4px}
+
+/* INSPECT */
+.eq-strip-wrap{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px 0}
+.eq-strip-label{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px}
+.eq-strip{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:10px}
+.eq-strip::-webkit-scrollbar{display:none}
+.eq-chip{flex-shrink:0;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);transition:all .12s}
+.eq-chip.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent-text)}
+.eq-chip.complete{background:var(--ok-bg);border-color:var(--ok-border);color:var(--ok)}
+.eq-chip.hasnok{background:var(--nok-bg);border-color:var(--nok-border);color:var(--nok)}
+
+.eq-meta{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px}
+.eq-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.eq-meta-label{font-size:11px;color:var(--text3);margin-bottom:3px}
+.eq-meta input{width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;outline:none}
+.eq-meta input:focus{border-color:var(--accent)}
+.ai-btn{width:100%;padding:8px 12px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--rsm);color:var(--accent-text);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px}
+.ai-btn:disabled{opacity:.4;cursor:not-allowed}
+.nominal-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.nom-card{background:var(--surface2);border-radius:var(--rsm);padding:7px 9px}
+.nom-label{font-size:10px;color:var(--text3)}
+.nom-val{font-size:13px;font-weight:600;color:var(--text);margin-top:2px}
+.nom-val.hi{color:var(--accent)}
+.nom-val.wn{color:var(--warn)}
+.nom-note{font-size:10px;color:var(--text3);margin-top:6px;font-style:italic}
+
+.section-block{border-bottom:1px solid var(--border)}
+.section-hdr{padding:13px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:var(--surface);user-select:none}
+.section-hdr-left{display:flex;align-items:center;gap:10px}
+.section-icon{width:30px;height:30px;border-radius:7px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.section-title{font-size:13px;font-weight:600}
+.section-right{display:flex;align-items:center;gap:8px}
+.section-pct{font-size:12px;font-weight:700}
+.chevron{font-size:14px;color:var(--text3);transition:transform .2s;display:inline-block}
+.chevron.open{transform:rotate(180deg)}
+.section-body{background:var(--bg);display:none}
+.section-body.open{display:block}
+
+.check-item{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);gap:8px}
+.check-item:last-child{border-bottom:none}
+.check-label{font-size:13px;color:var(--text);flex:1;line-height:1.4}
+.check-label.is-nok{color:var(--nok)}
+.toggle3{display:flex;gap:4px;flex-shrink:0}
+.t3{padding:5px 9px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text3);transition:all .1s;min-width:36px;text-align:center}
+.t3.ok{background:var(--ok-bg);border-color:var(--ok-border);color:var(--ok)}
+.t3.nok{background:var(--nok-bg);border-color:var(--nok-border);color:var(--nok)}
+.t3.na{background:var(--surface);border-color:var(--border);color:var(--text3)}
+
+.measure-row{display:flex;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border);gap:8px}
+.measure-row:last-child{border-bottom:none}
+.measure-label{font-size:12px;color:var(--text2);flex:1}
+.measure-input{width:80px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;text-align:right;outline:none}
+.measure-input:focus{border-color:var(--accent)}
+.measure-unit{font-size:11px;color:var(--text3);width:32px;text-align:right;flex-shrink:0}
+.measure-computed{font-size:12px;font-weight:600;color:var(--accent);text-align:right;flex-shrink:0}
+.note-area{width:100%;padding:11px 16px;background:var(--bg);border:none;border-top:1px solid var(--border);color:var(--text);font-size:13px;resize:none;min-height:72px;outline:none;font-family:inherit}
+
+.bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--surface);border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+.btn-primary{flex:1;padding:12px;background:var(--accent);color:#0c1a2e;border:none;border-radius:var(--rsm);font-size:14px;font-weight:700;cursor:pointer}
+.btn-secondary{padding:12px 14px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:var(--rsm);font-size:14px;cursor:pointer}
+.insp-content{padding-bottom:80px}
+
+/* REPORT */
+.report-hero{padding:28px 20px 20px;text-align:center;background:var(--surface);border-bottom:1px solid var(--border)}
+.report-pct{font-size:52px;font-weight:800;letter-spacing:-2px}
+.report-pts{font-size:13px;color:var(--text2);margin-top:4px}
+.rpt-bar-bg{height:4px;background:var(--border);border-radius:2px;margin:14px 0 0;overflow:hidden}
+.rpt-bar-fill{height:100%;border-radius:2px}
+.report-section{padding:16px;border-bottom:1px solid var(--border)}
+.report-section h3{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+.rpt-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.rpt-row:last-child{border-bottom:none}
+.nok-item{background:var(--nok-bg);border:1px solid var(--nok-border);border-radius:var(--rsm);padding:8px 11px;margin:4px 0;font-size:12px;color:var(--nok)}
+.eff-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);padding:10px 12px;margin:6px 0}
+.eff-title{font-size:12px;font-weight:600;margin-bottom:8px}
+.eff-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.eff-item{font-size:11px;color:var(--text3)}
+.eff-item span{display:block;font-size:13px;font-weight:600;color:var(--text);margin-top:1px}
+.rpt-bottom{padding:16px;padding-bottom:32px;display:flex;flex-direction:column;gap:8px}
+.btn-export{width:100%;padding:13px;border:none;border-radius:var(--radius);font-size:14px;font-weight:700;cursor:pointer}
+
+/* TOAST */
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:8px 14px;font-size:12px;color:var(--text2);z-index:200;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+.toast.tok{border-color:var(--ok-border);color:var(--ok)}
+.toast.terr{border-color:var(--nok-border);color:var(--nok)}
+.toast.tinf{border-color:var(--accent);color:var(--accent)}
+
+/* USER BADGE */
+.user-badge{display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;cursor:pointer}
+.user-avatar{width:20px;height:20px;border-radius:50%;object-fit:cover}
+.user-name{font-size:11px;color:var(--text2);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* COLLAB INDICATOR */
+.collab-bar{background:var(--accent-dim);border-bottom:1px solid var(--accent);padding:6px 16px;font-size:11px;color:var(--accent-text);display:flex;align-items:center;justify-content:space-between}
+.collab-users{display:flex;gap:4px}
+.collab-chip{padding:2px 8px;background:rgba(56,189,248,.2);border-radius:10px;font-size:10px;color:var(--accent-text)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">🌡️</div>
+    <div>
+      <div class="topbar-title" id="tbTitle">AVAC Inspect</div>
+      <div class="topbar-sub" id="tbSub">A carregar...</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="score-pill" id="tbScore" style="display:none">—</div>
+    <button class="settings-btn" id="settingsBtn" onclick="openSettings()" style="display:none" title="Configurações">⚙️</button>
+    <div class="user-badge" id="userBadge" style="display:none" onclick="signOut()">
+      <img class="user-avatar" id="userAvatar" src="" alt="">
+      <span class="user-name" id="userName"></span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- PAGE: AUTH -->
+<div class="page active" id="pgAuth">
+  <div class="auth-wrap">
+    <div class="auth-icon">🌡️</div>
+    <div class="auth-title">AVAC Inspect</div>
+    <div class="auth-sub">Inspeção em campo com backup automático e colaboração em tempo real.</div>
+    <button class="auth-btn" onclick="signInGoogle()">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+      Entrar com Google
+    </button>
+    <div class="sync-status" id="authStatus">
+      <div class="sync-dot" id="authDot"></div>
+      <span id="authLabel">A verificar sessão...</span>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: SESSIONS -->
+<div class="page" id="pgSessions">
+  <div class="setup-hero">
+    <h1>Inspeções</h1>
+    <p id="sessionsSubtitle">As tuas inspeções guardadas</p>
+  </div>
+  <div class="session-list" id="sessionList"></div>
+  <div style="padding:0 16px 32px">
+    <button class="new-session-btn" onclick="showNewSession()">+ Nova inspeção</button>
+  </div>
+</div>
+
+<!-- PAGE: NEW SESSION -->
+<div class="page" id="pgNew">
+  <div class="setup-hero">
+    <h1>Nova inspeção</h1>
+    <p>Configura os sistemas presentes</p>
+  </div>
+  <div class="setup-form">
+    <div class="field-group">
+      <label>Instalação / Loja</label>
+      <input type="text" id="sLoja" placeholder="ex: Zara Loures Shopping">
+    </div>
+    <div class="field-group">
+      <label>Data</label>
+      <input type="date" id="sData">
+    </div>
+    <div class="sec-divider">Sistemas — coloca 0 para ocultar secção</div>
+    <div class="counter-grid" id="counterGrid"></div>
+    <button class="start-btn" onclick="createSession()">▶ Iniciar inspeção</button>
+  </div>
+</div>
+
+<!-- PAGE: SETTINGS (overlay) -->
+<div class="page" id="pgSettings">
+  <div class="setup-hero">
+    <h1>Configurações</h1>
+    <p>Ajusta os sistemas sem perder dados</p>
+  </div>
+  <div class="setup-form">
+    <div class="sec-divider">Sistemas presentes</div>
+    <div class="counter-grid" id="settingsCounterGrid"></div>
+    <button class="start-btn" onclick="applySettings()">✓ Aplicar alterações</button>
+    <button style="width:100%;padding:13px;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:var(--rsm);font-size:14px;cursor:pointer;margin-top:4px" onclick="cancelSettings()">Cancelar</button>
+  </div>
+</div>
+
+<!-- PAGE: INSPECT -->
+<div class="page" id="pgInsp">
+  <div id="collabBar" style="display:none" class="collab-bar">
+    <span id="collabText">Colaboração activa</span>
+    <div class="collab-users" id="collabUsers"></div>
+  </div>
+  <div class="insp-content" id="inspContent"></div>
+  <div class="bottom-bar">
+    <button class="btn-secondary" onclick="showSessions()">←</button>
+    <button class="btn-primary" onclick="showReport()">📋 Relatório</button>
+  </div>
+</div>
+
+<!-- PAGE: REPORT -->
+<div class="page" id="pgReport">
+  <div id="reportBody"></div>
+  <div class="rpt-bottom">
+    <button class="btn-export" style="background:var(--accent);color:#0c1a2e" onclick="exportJSON()">⬇ Exportar JSON</button>
+    <button class="btn-export" style="background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-border)" onclick="exportText()">📄 Exportar texto</button>
+    <button class="btn-export" style="background:var(--surface);color:var(--text2);border:1px solid var(--border)" onclick="showPage('pgInsp')">← Voltar à inspeção</button>
+  </div>
+</div>
+
+<!-- FIREBASE -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getDatabase, ref, set, get, onValue, push, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBxkrNep9TPkgSs8jfWporTUtRaR2yobBg",
+  authDomain: "inditex-avac-checklist.firebaseapp.com",
+  databaseURL: "https://inditex-avac-checklist-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "inditex-avac-checklist",
+  storageBucket: "inditex-avac-checklist.firebasestorage.app",
+  messagingSenderId: "673839302833",
+  appId: "1:673839302833:web:15c79f3df5f5e6f860fa90"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+// ── SCHEMA ────────────────────────────────────────────────────────────────────
+const SYSTEMS = [
+  {key:'uta',label:'UTAs / Climatizadores',max:14},
+  {key:'chiller',label:'Chillers',max:6},
+  {key:'bomba',label:'Bombas circulação',max:4},
+  {key:'vaso',label:'Vasos de expansão',max:4},
+  {key:'vrv',label:'Unid. ext. VRV',max:6},
+  {key:'quadro',label:'Quadros elétricos',max:4},
+];
+
+const UTA_CHECKS = [
+  {sec:'Filtros',icon:'🔲',items:[{k:'f1',l:'Pré-filtro — limpeza / higienização'}]},
+  {sec:'Baterias',icon:'⬛',items:[{k:'b1',l:'Bateria — limpeza / higienização'},{k:'b2',l:'Tabuleiro condensados e drenagens'},{k:'b3',l:'Estanquidade das baterias'}]},
+  {sec:'Ventilador',icon:'🔄',items:[{k:'v1',l:'Funcionamento da unidade'},{k:'v2',l:'Aparelhagem de comando e proteção'},{k:'v3',l:'Ruídos / vibrações anormais'},{k:'v4',l:'Tensão e estado das correias'},{k:'v5',l:'Estado da junção motor-ventilador'}]},
+  {sec:'Temperatura',icon:'🌡',items:[{k:'t1',l:'Desvio temp. ambiente vs GTC ≤ 1°C'}]},
+];
+const UTA_MEASURES = [
+  {k:'vel',l:'Velocidade ar',u:'m/s'},{k:'larg',l:'Largura conduta',u:'cm'},
+  {k:'alt',l:'Altura conduta',u:'cm'},{k:'tconduta',l:'Temp. conduta',u:'°C'},
+  {k:'tambiente',l:'Temp. ambiente',u:'°C'},{k:'tgtc',l:'Temp. GTC',u:'°C'},
+  {k:'pelec',l:'Potência elétrica',u:'kW'},{k:'fp',l:'Fator de potência',u:'—'},
+];
+const CHILLER_CHECKS = [{sec:'Chiller',icon:'❄️',items:[{k:'ch1',l:'Funcionamento da unidade'},{k:'ch2',l:'Ruídos / vibrações anormais'},{k:'ch3',l:'Limpeza / higienização condensador'},{k:'ch4',l:'Pinturas e corrosão'},{k:'ch5',l:'Estanquidade circuito refrigerante'},{k:'ch6',l:'Estanquidade circuito hidráulico'},{k:'ch7',l:'Estado geral cablagem elétrica'}]}];
+const BOMBA_CHECKS = [{sec:'Bomba',icon:'💧',items:[{k:'bp1',l:'Estado de limpeza'},{k:'bp2',l:'Ruídos / vibrações anormais'},{k:'bp3',l:'Estanquidade — bomba, tubagem, válvulas'},{k:'bp4',l:'Termómetros e manómetros'},{k:'bp5',l:'Pintura e sinalização'}]}];
+const VASO_CHECKS = [{sec:'Vaso expansão',icon:'🫙',items:[{k:'ve1',l:'Pressão do vaso'},{k:'ve2',l:'Enchimento automático (se aplicável)'},{k:'ve3',l:'Alarme do vaso (se aplicável)'},{k:'ve4',l:'Válvula de segurança'},{k:'ve5',l:'Estanquidade do vaso'},{k:'ve6',l:'Estado da pintura'}]}];
+const VRV_CHECKS = [{sec:'Unid. ext. VRV',icon:'🏭',items:[{k:'vr1',l:'Funcionamento da unidade'},{k:'vr2',l:'Ruídos / vibrações anormais'},{k:'vr3',l:'Limpeza da unidade'},{k:'vr4',l:'Limpeza do condensador'},{k:'vr5',l:'Limpeza de drenagens'}]}];
+const VRV_MEASURES = [{k:'vr_tin',l:'Temp. entrada condensador',u:'°C'},{k:'vr_tout',l:'Temp. saída condensador',u:'°C'},{k:'vr_pasp',l:'Pressão aspiração',u:'bar'},{k:'vr_pcomp',l:'Pressão compressão',u:'bar'}];
+const QUADRO_CHECKS = [{sec:'Quadro elétrico',icon:'⚡',items:[{k:'qe1',l:'Inspeção visual quadro e componentes'}]}];
+const POWER_FIELDS = [{k:'pw_chiller',l:'Chillers'},{k:'pw_uta',l:'UTAs / Climatizadores'},{k:'pw_comp',l:'Compressor'},{k:'pw_bomba',l:'Bombas'},{k:'pw_vrv',l:'Unid. ext. VRV'}];
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let currentUser = null;
+let currentSessionId = null;
+let currentSession = null;
+let dbListener = null;
+let activeIdxs = {uta:0,chiller:0,bomba:0,vaso:0,vrv:0,quadro:0};
+let newCounts = {};
+let autoSaveTimer = null;
+
+// ── AUTH ─────────────────────────────────────────────────────────────────────
+window.signInGoogle = async () => {
+  try {
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
+  } catch(e) { showToast('Erro ao entrar','err'); }
+};
+
+window.signOut = async () => {
+  if(!confirm('Terminar sessão?')) return;
+  await fbSignOut(auth);
+};
+
+onAuthStateChanged(auth, user => {
+  currentUser = user;
+  if(user) {
+    document.getElementById('userBadge').style.display = 'flex';
+    document.getElementById('userAvatar').src = user.photoURL || '';
+    document.getElementById('userName').textContent = user.displayName?.split(' ')[0] || '';
+    document.getElementById('settingsBtn').style.display = 'flex';
+    showSessions();
+  } else {
+    document.getElementById('userBadge').style.display = 'none';
+    document.getElementById('settingsBtn').style.display = 'none';
+    showPage('pgAuth');
+    document.getElementById('authLabel').textContent = 'Pronto para entrar';
+    document.getElementById('authDot').className = 'sync-dot ok';
+    document.getElementById('tbSub').textContent = 'Não autenticado';
+  }
+});
+
+// ── SESSIONS ─────────────────────────────────────────────────────────────────
+window.showSessions = async () => {
+  showPage('pgSessions');
+  document.getElementById('tbTitle').textContent = 'AVAC Inspect';
+  document.getElementById('tbSub').textContent = currentUser?.displayName?.split(' ')[0] || '';
+  document.getElementById('tbScore').style.display = 'none';
+  if(dbListener) { dbListener(); dbListener = null; }
+  const snap = await get(ref(db, `users/${currentUser.uid}/sessions`));
+  const list = document.getElementById('sessionList');
+  if(!snap.exists()) { list.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--text3);font-size:13px">Sem inspeções. Cria a primeira!</div>'; return; }
+  const sessions = snap.val();
+  const sorted = Object.entries(sessions).sort((a,b) => (b[1].updatedAt||0)-(a[1].updatedAt||0));
+  list.innerHTML = sorted.map(([id,s]) => {
+    const sc = calcScoreFromSession(s);
+    const scStr = sc.tot > 0 ? `${sc.pct}%` : '—';
+    const scColor = sc.pct >= 90 ? 'var(--ok)' : sc.pct >= 75 ? 'var(--warn)' : 'var(--nok)';
+    const d = s.meta?.data || '—';
+    return `<div class="session-card" onclick="openSession('${id}')">
+      <div class="session-info">
+        <div class="session-name">${s.meta?.loja || 'Sem nome'}</div>
+        <div class="session-meta">${d} · ${Object.keys(s.utas||{}).length + Object.keys(s.chillers||{}).length + Object.keys(s.bombas||{}).length + Object.keys(s.vasos||{}).length + Object.keys(s.vrvs||{}).length + Object.keys(s.quadros||{}).length} equip.</div>
+      </div>
+      <div class="session-score" style="color:${scColor}">${scStr}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('sessionsSubtitle').textContent = `${sorted.length} inspeção(ões)`;
+};
+
+window.showNewSession = () => {
+  document.getElementById('sData').value = new Date().toISOString().split('T')[0];
+  const counts = {uta:2,chiller:0,bomba:0,vaso:0,vrv:0,quadro:1};
+  renderCounterGrid('counterGrid', counts, 'newCount');
+  showPage('pgNew');
+  document.getElementById('tbTitle').textContent = 'Nova inspeção';
+  document.getElementById('tbSub').textContent = '';
+};
+
+window.createSession = async () => {
+  const loja = document.getElementById('sLoja').value.trim() || 'Inspeção AVAC';
+  const data = document.getElementById('sData').value;
+  const counts = {};
+  SYSTEMS.forEach(s => { counts[s.key] = parseInt(document.getElementById('newCount_'+s.key)?.textContent || '0'); });
+  const session = buildSession(loja, data, counts);
+  const newRef = push(ref(db, `users/${currentUser.uid}/sessions`));
+  await set(newRef, session);
+  await openSession(newRef.key);
+};
+
+function buildSession(loja, data, counts) {
+  const session = { meta:{loja,data,createdAt:Date.now(),updatedAt:Date.now()}, counts, power:{}, utas:{}, chillers:{}, bombas:{}, vasos:{}, vrvs:{}, quadros:{} };
+  const makeEq = (name, checks) => { const e={name,marca:'',modelo:'',serie:'',ano:'',checks:{},measures:{},note:'',nominal:null}; checks.forEach(s=>s.items.forEach(i=>e.checks[i.k]=null)); return e; };
+  for(let i=1;i<=counts.uta;i++) session.utas[`uta${i}`] = makeEq(`UTA ${i}`, UTA_CHECKS);
+  for(let i=1;i<=counts.chiller;i++) session.chillers[`ch${i}`] = makeEq(`Chiller ${i}`, CHILLER_CHECKS);
+  for(let i=1;i<=counts.bomba;i++) session.bombas[`bp${i}`] = makeEq(`Bomba ${i}`, BOMBA_CHECKS);
+  for(let i=1;i<=counts.vaso;i++) session.vasos[`vs${i}`] = makeEq(`Vaso ${i}`, VASO_CHECKS);
+  for(let i=1;i<=counts.vrv;i++) session.vrvs[`vr${i}`] = makeEq(`VRV ${i}`, VRV_CHECKS);
+  for(let i=1;i<=counts.quadro;i++) session.quadros[`qe${i}`] = makeEq(`Quadro ${i}`, QUADRO_CHECKS);
+  return session;
+}
+
+async function openSession(id) {
+  currentSessionId = id;
+  if(dbListener) { dbListener(); dbListener = null; }
+  // realtime listener
+  dbListener = onValue(ref(db, `users/${currentUser.uid}/sessions/${id}`), snap => {
+    if(!snap.exists()) return;
+    currentSession = snap.val();
+    // preserve active indexes
+    renderInspection();
+    updateTopScore();
+    updateCollabBar();
+  });
+  showPage('pgInsp');
+}
+
+// ── SETTINGS ─────────────────────────────────────────────────────────────────
+window.openSettings = () => {
+  if(!currentSession) return;
+  const counts = currentSession.counts || {};
+  renderCounterGrid('settingsCounterGrid', counts, 'setCount');
+  showPage('pgSettings');
+  document.getElementById('tbTitle').textContent = 'Configurações';
+  document.getElementById('tbSub').textContent = '';
+};
+
+window.cancelSettings = () => { showPage('pgInsp'); document.getElementById('tbTitle').textContent = currentSession?.meta?.loja || ''; };
+
+window.applySettings = async () => {
+  const newCounts = {};
+  SYSTEMS.forEach(s => { newCounts[s.key] = parseInt(document.getElementById('setCount_'+s.key)?.textContent || '0'); });
+  const old = currentSession.counts || {};
+  // Only ADD new equipments — NEVER remove existing ones with data
+  const makeEq = (name, checks) => { const e={name,marca:'',modelo:'',serie:'',ano:'',checks:{},measures:{},note:'',nominal:null}; checks.forEach(s=>s.items.forEach(i=>e.checks[i.k]=null)); return e; };
+  const updates = {};
+  const addNew = (key, arr, prefix, checks, label) => {
+    const existing = Object.keys(currentSession[arr]||{}).length;
+    const target = newCounts[key];
+    if(target > existing) {
+      for(let i=existing+1;i<=target;i++) {
+        updates[`${arr}/${prefix}${i}`] = makeEq(`${label} ${i}`, checks);
+      }
+    } else if(target < existing) {
+      // Check if equipments to be removed have any data
+      const keys = Object.keys(currentSession[arr]||{}).sort();
+      for(let i=target;i<existing;i++) {
+        const eKey = keys[i];
+        const e = currentSession[arr][eKey];
+        const hasData = Object.values(e.checks||{}).some(v=>v!==null) || e.marca || e.modelo || e.note;
+        if(hasData) { showToast(`${e.name} tem dados — não foi removido`,'err'); }
+        // Never remove — just don't add
+      }
+    }
+  };
+  addNew('uta','utas','uta',UTA_CHECKS,'UTA');
+  addNew('chiller','chillers','ch',CHILLER_CHECKS,'Chiller');
+  addNew('bomba','bombas','bp',BOMBA_CHECKS,'Bomba');
+  addNew('vaso','vasos','vs',VASO_CHECKS,'Vaso');
+  addNew('vrv','vrvs','vr',VRV_CHECKS,'VRV');
+  addNew('quadro','quadros','qe',QUADRO_CHECKS,'Quadro');
+  updates['counts'] = newCounts;
+  updates['updatedAt'] = Date.now();
+  const base = `users/${currentUser.uid}/sessions/${currentSessionId}`;
+  const updateObj = {};
+  Object.entries(updates).forEach(([k,v]) => updateObj[`${base}/${k}`] = v);
+  await set(ref(db, base), {...currentSession, ...updates});
+  showPage('pgInsp');
+  showToast('Configuração actualizada','ok');
+};
+
+// ── COUNTER GRID ──────────────────────────────────────────────────────────────
+function renderCounterGrid(containerId, counts, prefix) {
+  const g = document.getElementById(containerId);
+  g.innerHTML = SYSTEMS.map(sys => {
+    const val = counts[sys.key] ?? 0;
+    return `<div class="counter-card">
+      <div class="counter-label">${sys.label}</div>
+      <div class="counter-row">
+        <button class="cbtn" onclick="adjustCount('${prefix}','${sys.key}',-1,${sys.max})">−</button>
+        <div class="cval${val===0?' zero':''}" id="${prefix}_${sys.key}">${val}</div>
+        <button class="cbtn" onclick="adjustCount('${prefix}','${sys.key}',1,${sys.max})">+</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.adjustCount = (prefix, key, delta, max) => {
+  const el = document.getElementById(`${prefix}_${key}`);
+  if(!el) return;
+  const cur = parseInt(el.textContent)||0;
+  const nv = Math.max(0, Math.min(max, cur+delta));
+  el.textContent = nv;
+  el.className = 'cval' + (nv===0?' zero':'');
+};
+
+// ── INSPECTION RENDER ─────────────────────────────────────────────────────────
+function renderInspection() {
+  if(!currentSession) return;
+  const s = currentSession;
+  document.getElementById('tbTitle').textContent = s.meta?.loja || 'Inspeção';
+  document.getElementById('tbSub').textContent = s.meta?.data || '';
+  document.getElementById('tbScore').style.display = 'block';
+
+  const utaList = Object.entries(s.utas||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+  const chList = Object.entries(s.chillers||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+  const bpList = Object.entries(s.bombas||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+  const vsList = Object.entries(s.vasos||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+  const vrList = Object.entries(s.vrvs||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+  const qeList = Object.entries(s.quadros||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+
+  let html = '';
+  if(utaList.length) {
+    const ai = Math.min(activeIdxs.uta, utaList.length-1);
+    html += stripHTML(utaList, ai, 'uta', 'UTAs / Climatizadores');
+    const [utaKey, uta] = utaList[ai];
+    html += eqMetaHTML(uta, 'uta', utaKey);
+    html += checksHTML(uta, UTA_CHECKS, 'uta', utaKey);
+    html += measuresHTML(uta, UTA_MEASURES, 'uta', utaKey);
+    html += noteHTML(uta, 'uta', utaKey);
+    if(utaList.some(([,e])=>{const m=e.measures||{};return m.vel&&m.larg&&m.alt;})) html += caudaisSummaryHTML(utaList);
+  }
+  html += powerHTML(s.power||{});
+  if(chList.length) {
+    const ai = Math.min(activeIdxs.chiller, chList.length-1);
+    html += stripHTML(chList, ai, 'chiller', 'Chillers');
+    const [ck,ce] = chList[ai];
+    html += checksHTML(ce, CHILLER_CHECKS, 'chiller', ck);
+    html += noteHTML(ce, 'chiller', ck);
+  }
+  if(bpList.length) {
+    const ai = Math.min(activeIdxs.bomba, bpList.length-1);
+    html += stripHTML(bpList, ai, 'bomba', 'Bombas');
+    const [bk,be] = bpList[ai];
+    html += checksHTML(be, BOMBA_CHECKS, 'bomba', bk);
+    html += noteHTML(be, 'bomba', bk);
+  }
+  if(vsList.length) {
+    const ai = Math.min(activeIdxs.vaso, vsList.length-1);
+    html += stripHTML(vsList, ai, 'vaso', 'Vasos de expansão');
+    const [vk,ve] = vsList[ai];
+    html += checksHTML(ve, VASO_CHECKS, 'vaso', vk);
+    html += noteHTML(ve, 'vaso', vk);
+  }
+  if(vrList.length) {
+    const ai = Math.min(activeIdxs.vrv, vrList.length-1);
+    html += stripHTML(vrList, ai, 'vrv', 'Unid. ext. VRV');
+    const [vk,ve] = vrList[ai];
+    html += checksHTML(ve, VRV_CHECKS, 'vrv', vk);
+    html += measuresHTML(ve, VRV_MEASURES, 'vrv', vk);
+    html += noteHTML(ve, 'vrv', vk);
+  }
+  if(qeList.length) {
+    const ai = Math.min(activeIdxs.quadro, qeList.length-1);
+    html += stripHTML(qeList, ai, 'quadro', 'Quadros elétricos');
+    const [qk,qe] = qeList[ai];
+    html += checksHTML(qe, QUADRO_CHECKS, 'quadro', qk);
+    html += noteHTML(qe, 'quadro', qk);
+  }
+
+  document.getElementById('inspContent').innerHTML = html;
+  // open first section by default
+  document.querySelectorAll('.section-body').forEach((b,i)=>{ if(i<2) b.classList.add('open'); });
+  document.querySelectorAll('.chevron').forEach((c,i)=>{ if(i<2) c.classList.add('open'); });
+}
+
+function stripHTML(list, activeI, type, label) {
+  const chips = list.map(([key,e],i) => {
+    const vals = Object.values(e.checks||{});
+    const hasNok = vals.some(v=>v==='nok');
+    const complete = vals.length>0 && vals.every(v=>v!==null);
+    const cls = i===activeI?'eq-chip active':hasNok?'eq-chip hasnok':complete?'eq-chip complete':'eq-chip';
+    return `<button class="${cls}" onclick="switchEq('${type}',${i})">${e.name||key}</button>`;
+  }).join('');
+  return `<div class="eq-strip-wrap"><div class="eq-strip-label">${label}</div><div class="eq-strip">${chips}</div></div>`;
+}
+
+function eqMetaHTML(e, type, key) {
+  const hasData = e.marca && e.modelo;
+  return `<div class="eq-meta">
+    <div class="eq-meta-grid">
+      <div><div class="eq-meta-label">Marca</div><input type="text" value="${e.marca||''}" placeholder="ex: Termobrasil" oninput="setMeta('${type}','${key}','marca',this.value)"></div>
+      <div><div class="eq-meta-label">Modelo</div><input type="text" value="${e.modelo||''}" placeholder="ex: FAH100" oninput="setMeta('${type}','${key}','modelo',this.value)"></div>
+    </div>
+    <div class="eq-meta-grid">
+      <div><div class="eq-meta-label">Nº série</div><input type="text" value="${e.serie||''}" placeholder="opcional" oninput="setMeta('${type}','${key}','serie',this.value)"></div>
+      <div><div class="eq-meta-label">Ano inst.</div><input type="text" value="${e.ano||''}" placeholder="ex: 2019" oninput="setMeta('${type}','${key}','ano',this.value)"></div>
+    </div>
+    <button class="ai-btn" ${!hasData?'disabled':''} id="aiBtn_${key}" onclick="lookupNominal('${type}','${key}')">✨ Dados nominais (IA)</button>
+    <div id="nomArea_${key}">${e.nominal ? nominalHTML(e) : ''}</div>
+  </div>`;
+}
+
+function nominalHTML(e) {
+  const n = e.nominal, m = e.measures||{};
+  const vel=parseFloat(m.vel)||0,larg=parseFloat(m.larg)||0,alt=parseFloat(m.alt)||0;
+  const caudal=vel&&larg&&alt?Math.round(vel*(larg/100)*(alt/100)*3600):null;
+  const pelec=parseFloat(m.pelec)||0;
+  const eer=n.potencia_termica_kw&&pelec?(n.potencia_termica_kw/pelec).toFixed(2):null;
+  const effC=caudal&&n.caudal_m3h?Math.round(caudal/n.caudal_m3h*100):null;
+  let cards='';
+  if(n.caudal_m3h) cards+=`<div class="nom-card"><div class="nom-label">Caudal nominal</div><div class="nom-val">${n.caudal_m3h} m³/h</div></div>`;
+  if(caudal) cards+=`<div class="nom-card"><div class="nom-label">Caudal medido</div><div class="nom-val ${effC&&(effC<80||effC>120)?'wn':'hi'}">${caudal} m³/h${effC?' ('+effC+'%)':''}</div></div>`;
+  if(n.potencia_termica_kw) cards+=`<div class="nom-card"><div class="nom-label">P. térmica nom.</div><div class="nom-val">${n.potencia_termica_kw} kW</div></div>`;
+  if(eer) cards+=`<div class="nom-card"><div class="nom-label">EER real</div><div class="nom-val hi">${eer}</div></div>`;
+  if(n.cop_nominal) cards+=`<div class="nom-card"><div class="nom-label">COP nominal</div><div class="nom-val">${n.cop_nominal}</div></div>`;
+  if(n.eer_nominal) cards+=`<div class="nom-card"><div class="nom-label">EER nominal</div><div class="nom-val">${n.eer_nominal}</div></div>`;
+  return `<div class="nominal-grid">${cards}</div>${n.nota?`<div class="nom-note">ℹ ${n.nota}</div>`:''}`;
+}
+
+function checksHTML(e, secs, type, key) {
+  return secs.map(s => {
+    const secOk=s.items.filter(i=>(e.checks||{})[i.k]==='ok').length;
+    const secTot=s.items.filter(i=>(e.checks||{})[i.k]!==null&&(e.checks||{})[i.k]!=='na').length;
+    const pct=secTot>0?Math.round(secOk/secTot*100):null;
+    const pctColor=pct===null?'var(--text3)':pct===100?'var(--ok)':pct>=75?'var(--warn)':'var(--nok)';
+    const sid=`s_${key}_${s.sec.replace(/\W/g,'_')}`;
+    const items=s.items.map(it=>{
+      const v=(e.checks||{})[it.k];
+      return `<div class="check-item">
+        <span class="check-label${v==='nok'?' is-nok':''}">${it.l}</span>
+        <div class="toggle3">
+          <button class="t3${v==='ok'?' ok':''}" onclick="setCheck('${type}','${key}','${it.k}','ok')">OK</button>
+          <button class="t3${v==='nok'?' nok':''}" onclick="setCheck('${type}','${key}','${it.k}','nok')">NOK</button>
+          <button class="t3${v==='na'?' na':''}" onclick="setCheck('${type}','${key}','${it.k}','na')">N/A</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="section-block">
+      <div class="section-hdr" onclick="toggleSec('${sid}')">
+        <div class="section-hdr-left"><div class="section-icon">${s.icon}</div><div class="section-title">${s.sec}</div></div>
+        <div class="section-right">${pct!==null?`<span class="section-pct" style="color:${pctColor}">${pct}%</span>`:''}<span class="chevron" id="chev_${sid}">▾</span></div>
+      </div>
+      <div class="section-body" id="${sid}">${items}</div>
+    </div>`;
+  }).join('');
+}
+
+function measuresHTML(e, fields, type, key) {
+  const m=e.measures||{};
+  const vel=parseFloat(m.vel)||0,larg=parseFloat(m.larg)||0,alt=parseFloat(m.alt)||0;
+  const caudal=vel&&larg&&alt?Math.round(vel*(larg/100)*(alt/100)*3600):null;
+  const pelec=parseFloat(m.pelec)||0;
+  const ptherm=e.nominal?.potencia_termica_kw||null;
+  const eer=ptherm&&pelec?(ptherm/pelec).toFixed(2):null;
+  const dtc=m.tconduta&&m.tambiente?(parseFloat(m.tambiente)-parseFloat(m.tconduta)).toFixed(1):null;
+  const sid=`s_${key}_med`;
+  const rows=fields.map(f=>`<div class="measure-row">
+    <span class="measure-label">${f.l}</span>
+    <input class="measure-input" type="number" step="any" value="${m[f.k]||''}" placeholder="—" oninput="setMeasure('${type}','${key}','${f.k}',this.value)">
+    <span class="measure-unit">${f.u}</span>
+  </div>`).join('');
+  const comp=[
+    caudal?`<div class="measure-row"><span class="measure-label">Caudal calculado</span><span class="measure-computed">${caudal} m³/h</span></div>`:'',
+    eer?`<div class="measure-row"><span class="measure-label">EER real</span><span class="measure-computed">${eer}</span></div>`:'',
+    dtc?`<div class="measure-row"><span class="measure-label">ΔT conduta</span><span class="measure-computed">${dtc} °C</span></div>`:'',
+  ].join('');
+  return `<div class="section-block">
+    <div class="section-hdr" onclick="toggleSec('${sid}')">
+      <div class="section-hdr-left"><div class="section-icon">📐</div><div class="section-title">Medições em campo</div></div>
+      <span class="chevron" id="chev_${sid}">▾</span>
+    </div>
+    <div class="section-body" id="${sid}">${rows}${comp}</div>
+  </div>`;
+}
+
+function caudaisSummaryHTML(list) {
+  const sid='s_caudais_sum';
+  const rows=list.map(([,e])=>{
+    const m=e.measures||{};
+    const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0;
+    const c=v&&l&&a?Math.round(v*(l/100)*(a/100)*3600):null;
+    if(!c) return '';
+    return `<div class="measure-row"><span class="measure-label">${e.name}</span><span class="measure-computed">${c} m³/h${m.fp?' · FP '+parseFloat(m.fp).toFixed(2):''}</span></div>`;
+  }).join('');
+  if(!rows.trim()) return '';
+  return `<div class="section-block">
+    <div class="section-hdr" onclick="toggleSec('${sid}')">
+      <div class="section-hdr-left"><div class="section-icon">💨</div><div class="section-title">Caudais de ar — resumo</div></div>
+      <span class="chevron" id="chev_${sid}">▾</span>
+    </div>
+    <div class="section-body" id="${sid}">${rows}</div>
+  </div>`;
+}
+
+function powerHTML(power) {
+  const sid='s_power';
+  const rows=POWER_FIELDS.map(f=>`<div class="measure-row">
+    <span class="measure-label">${f.l}</span>
+    <input class="measure-input" type="number" step="any" value="${power[f.k]||''}" placeholder="—" oninput="setPower('${f.k}',this.value)">
+    <span class="measure-unit">kW</span>
+  </div>`).join('');
+  const total=POWER_FIELDS.reduce((a,f)=>a+(parseFloat(power[f.k])||0),0);
+  const totalRow=total>0?`<div class="measure-row"><span class="measure-label" style="font-weight:600;color:var(--text)">Total</span><span class="measure-computed">${total.toFixed(1)} kW</span></div>`:'';
+  return `<div class="section-block">
+    <div class="section-hdr" onclick="toggleSec('${sid}')">
+      <div class="section-hdr-left"><div class="section-icon">🔌</div><div class="section-title">Consumo elétrico — potências</div></div>
+      <span class="chevron" id="chev_${sid}">▾</span>
+    </div>
+    <div class="section-body" id="${sid}">${rows}${totalRow}</div>
+  </div>`;
+}
+
+function noteHTML(e, type, key) {
+  return `<div style="border-bottom:1px solid var(--border)"><textarea class="note-area" placeholder="Notas / observações..." oninput="setNote('${type}','${key}',this.value)">${e.note||''}</textarea></div>`;
+}
+
+// ── INTERACTIONS ──────────────────────────────────────────────────────────────
+window.switchEq = (type, i) => { activeIdxs[type]=i; renderInspection(); };
+window.toggleSec = id => {
+  const b=document.getElementById(id),c=document.getElementById('chev_'+id);
+  if(b){b.classList.toggle('open');if(c)c.classList.toggle('open');}
+};
+
+function dbPath(sub) { return `users/${currentUser.uid}/sessions/${currentSessionId}/${sub}`; }
+
+function scheduleSave(path, value) {
+  set(ref(db, path), value).catch(()=>showToast('Erro ao guardar','err'));
+}
+
+window.setCheck = (type, key, ck, val) => {
+  const arr = typeToArr(type);
+  if(!currentSession[arr]?.[key]) return;
+  currentSession[arr][key].checks[ck] = val;
+  scheduleSave(dbPath(`${arr}/${key}/checks/${ck}`), val);
+  scheduleSave(dbPath('updatedAt'), Date.now());
+  renderInspection();
+};
+
+window.setMeta = (type, ekey, field, val) => {
+  const arr=typeToArr(type);
+  if(!currentSession[arr]?.[ekey]) return;
+  currentSession[arr][ekey][field]=val;
+  scheduleSave(dbPath(`${arr}/${ekey}/${field}`), val);
+  const e=currentSession[arr][ekey];
+  const btn=document.getElementById('aiBtn_'+ekey);
+  if(btn) btn.disabled=!(e.marca&&e.modelo);
+};
+
+window.setMeasure = (type, key, mk, val) => {
+  const arr=typeToArr(type);
+  if(!currentSession[arr]?.[key]) return;
+  if(!currentSession[arr][key].measures) currentSession[arr][key].measures={};
+  currentSession[arr][key].measures[mk]=val;
+  scheduleSave(dbPath(`${arr}/${key}/measures/${mk}`), val);
+  renderInspection();
+};
+
+window.setNote = (type, key, val) => {
+  const arr=typeToArr(type);
+  if(!currentSession[arr]?.[key]) return;
+  currentSession[arr][key].note=val;
+  scheduleSave(dbPath(`${arr}/${key}/note`), val);
+};
+
+window.setPower = (k, val) => {
+  if(!currentSession.power) currentSession.power={};
+  currentSession.power[k]=val;
+  scheduleSave(dbPath(`power/${k}`), val);
+  renderInspection();
+};
+
+function typeToArr(t) { return {uta:'utas',chiller:'chillers',bomba:'bombas',vaso:'vasos',vrv:'vrvs',quadro:'quadros'}[t]; }
+
+// ── AI LOOKUP ─────────────────────────────────────────────────────────────────
+window.lookupNominal = async (type, key) => {
+  const arr=typeToArr(type);
+  const e=currentSession[arr]?.[key];
+  if(!e?.marca||!e?.modelo) return;
+  const btn=document.getElementById('aiBtn_'+key);
+  btn.textContent='⏳ A consultar...'; btn.disabled=true;
+  const prompt=`Dados nominais do equipamento AVAC: marca "${e.marca}", modelo "${e.modelo}".
+Responde APENAS em JSON válido, sem markdown, com esta estrutura:
+{"caudal_m3h":number_or_null,"potencia_termica_kw":number_or_null,"potencia_eletrica_kw":number_or_null,"cop_nominal":number_or_null,"eer_nominal":number_or_null,"nota":"string curta"}
+Se não souberes, usa null. Não inventes.`;
+  try {
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:400,messages:[{role:'user',content:prompt}]})});
+    const d=await r.json();
+    const txt=d.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+    const parsed=JSON.parse(txt.replace(/```json|```/g,'').trim());
+    currentSession[arr][key].nominal=parsed;
+    scheduleSave(dbPath(`${arr}/${key}/nominal`), parsed);
+    const area=document.getElementById('nomArea_'+key);
+    if(area) area.innerHTML=nominalHTML(currentSession[arr][key]);
+    showToast('Dados nominais carregados','ok');
+  } catch(err){ showToast('Não foi possível obter dados nominais','err'); }
+  finally{ btn.textContent='✨ Dados nominais (IA)'; btn.disabled=false; }
+};
+
+// ── SCORE ─────────────────────────────────────────────────────────────────────
+function calcScoreFromSession(s) {
+  let ok=0,tot=0;
+  ['utas','chillers','bombas','vasos','vrvs','quadros'].forEach(arr=>{
+    Object.values(s[arr]||{}).forEach(e=>Object.values(e.checks||{}).forEach(v=>{if(v==='ok'){ok++;tot++;}else if(v==='nok')tot++;}));
+  });
+  return {ok,tot,pct:tot>0?Math.round(ok/tot*100):0};
+}
+
+function updateTopScore() {
+  if(!currentSession) return;
+  const {ok,tot,pct}=calcScoreFromSession(currentSession);
+  const pill=document.getElementById('tbScore');
+  pill.textContent=tot>0?pct+'%':'—';
+  pill.className='score-pill'+(tot===0?'':pct>=90?' good':pct>=75?' warn':' bad');
+  document.getElementById('tbSub').textContent=`${ok}/${tot} pts`;
+}
+
+// ── COLLAB ────────────────────────────────────────────────────────────────────
+function updateCollabBar() {
+  // Presence: write own presence, show others
+  const presRef = ref(db, `sessions_presence/${currentSessionId}/${currentUser.uid}`);
+  set(presRef, {name: currentUser.displayName?.split(' ')[0]||'Auditor', ts: Date.now()});
+  onValue(ref(db, `sessions_presence/${currentSessionId}`), snap => {
+    if(!snap.exists()) return;
+    const users = Object.entries(snap.val()).filter(([uid,u])=>uid!==currentUser.uid&&(Date.now()-u.ts)<60000);
+    const bar = document.getElementById('collabBar');
+    if(users.length>0) {
+      bar.style.display='flex';
+      document.getElementById('collabText').textContent=`${users.length} auditor(es) activo(s)`;
+      document.getElementById('collabUsers').innerHTML=users.map(([,u])=>`<div class="collab-chip">${u.name}</div>`).join('');
+    } else { bar.style.display='none'; }
+  });
+}
+
+// ── REPORT ────────────────────────────────────────────────────────────────────
+window.showReport = () => {
+  const s=currentSession;
+  const {ok,tot,pct}=calcScoreFromSession(s);
+  const color=pct>=90?'#38bdf8':pct>=75?'#f59e0b':'#ef4444';
+  let html=`<div class="report-hero">
+    <div class="report-pct" style="color:${color}">${pct}%</div>
+    <div class="report-pts">${ok} / ${tot} pontos · ${s.meta?.loja||'—'} · ${s.meta?.data||'—'}</div>
+    <div class="rpt-bar-bg"><div class="rpt-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+  </div>`;
+  html+=`<div class="report-section"><h3>Identificação</h3>
+    <div class="rpt-row"><span>Instalação</span><span>${s.meta?.loja||'—'}</span></div>
+    <div class="rpt-row"><span>Data</span><span>${s.meta?.data||'—'}</span></div>
+    <div class="rpt-row"><span>Auditor</span><span>${currentUser?.displayName||'—'}</span></div>
+  </div>`;
+  const allEqs=[...Object.values(s.utas||{}),...Object.values(s.chillers||{}),...Object.values(s.bombas||{}),...Object.values(s.vasos||{}),...Object.values(s.vrvs||{}),...Object.values(s.quadros||{})];
+  const allSecs=[...UTA_CHECKS,...CHILLER_CHECKS,...BOMBA_CHECKS,...VASO_CHECKS,...VRV_CHECKS,...QUADRO_CHECKS];
+  const itemMap={}; allSecs.forEach(sec=>sec.items.forEach(i=>itemMap[i.k]=i.l));
+  const noks=[];
+  allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${e.name}: ${itemMap[k]||k}`);}));
+  if(noks.length){
+    html+=`<div class="report-section"><h3 style="color:var(--nok)">⚠ Não conformidades (${noks.length})</h3>`;
+    noks.forEach(n=>html+=`<div class="nok-item">${n}</div>`);
+    html+='</div>';
+  }
+  html+=`<div class="report-section"><h3>Score por equipamento</h3>`;
+  allEqs.forEach(e=>{
+    let eOk=0,eTot=0;
+    Object.values(e.checks||{}).forEach(v=>{if(v==='ok'){eOk++;eTot++;}else if(v==='nok')eTot++;});
+    const ep=eTot>0?Math.round(eOk/eTot*100):null;
+    const ec=ep===null?'var(--text3)':ep===100?'var(--ok)':ep>=75?'var(--warn)':'var(--nok)';
+    html+=`<div class="rpt-row"><span>${e.name}${e.marca?` <span style="color:var(--text3);font-size:11px">${e.marca} ${e.modelo}</span>`:''}</span><span style="font-weight:700;color:${ec}">${ep!==null?ep+'%':'—'}</span></div>`;
+  });
+  html+='</div>';
+  const eqsEff=Object.values(s.utas||{}).filter(e=>{const m=e.measures||{};return(m.vel&&m.larg&&m.alt)||e.nominal;});
+  if(eqsEff.length){
+    html+=`<div class="report-section"><h3>Desempenho energético</h3>`;
+    eqsEff.forEach(e=>{
+      const m=e.measures||{},n=e.nominal;
+      const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0;
+      const c=v&&l&&a?Math.round(v*(l/100)*(a/100)*3600):null;
+      const p=parseFloat(m.pelec)||0;
+      const eer=n?.potencia_termica_kw&&p?(n.potencia_termica_kw/p).toFixed(2):null;
+      const dt=m.tconduta&&m.tambiente?(parseFloat(m.tambiente)-parseFloat(m.tconduta)).toFixed(1):null;
+      html+=`<div class="eff-block"><div class="eff-title">${e.name}${e.marca?' — '+e.marca+' '+e.modelo:''}</div><div class="eff-grid">`;
+      if(c) html+=`<div class="eff-item">Caudal real<span>${c} m³/h</span></div>`;
+      if(n?.caudal_m3h) html+=`<div class="eff-item">Caudal nominal<span>${n.caudal_m3h} m³/h</span></div>`;
+      if(eer) html+=`<div class="eff-item">EER real<span>${eer}</span></div>`;
+      if(n?.eer_nominal) html+=`<div class="eff-item">EER nominal<span>${n.eer_nominal}</span></div>`;
+      if(dt) html+=`<div class="eff-item">ΔT conduta<span>${dt} °C</span></div>`;
+      html+='</div></div>';
+    });
+    html+='</div>';
+  }
+  const pwTotal=POWER_FIELDS.reduce((a,f)=>a+(parseFloat((s.power||{})[f.k])||0),0);
+  if(pwTotal>0){
+    html+=`<div class="report-section"><h3>Consumo elétrico</h3>`;
+    POWER_FIELDS.forEach(f=>{if((s.power||{})[f.k])html+=`<div class="rpt-row"><span>${f.l}</span><span>${parseFloat(s.power[f.k]).toFixed(1)} kW</span></div>`;});
+    html+=`<div class="rpt-row" style="font-weight:700"><span>Total</span><span>${pwTotal.toFixed(1)} kW</span></div></div>`;
+  }
+  allEqs.filter(e=>e.note).forEach(e=>{html+=`<div class="report-section"><h3>Notas — ${e.name}</h3><p style="font-size:13px;line-height:1.5">${e.note}</p></div>`;});
+  document.getElementById('reportBody').innerHTML=html;
+  showPage('pgReport');
+};
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+window.exportJSON = () => {
+  const blob=new Blob([JSON.stringify(currentSession,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`avac_${(currentSession.meta?.loja||'insp').replace(/\s/g,'_')}_${currentSession.meta?.data||'nd'}.json`;a.click();URL.revokeObjectURL(url);
+  showToast('JSON exportado','ok');
+};
+
+window.exportText = () => {
+  const s=currentSession;const {ok,tot,pct}=calcScoreFromSession(s);
+  const allEqs=[...Object.values(s.utas||{}),...Object.values(s.chillers||{}),...Object.values(s.bombas||{}),...Object.values(s.vasos||{}),...Object.values(s.vrvs||{}),...Object.values(s.quadros||{})];
+  const allSecs=[...UTA_CHECKS,...CHILLER_CHECKS,...BOMBA_CHECKS,...VASO_CHECKS,...VRV_CHECKS,...QUADRO_CHECKS];
+  const itemMap={};allSecs.forEach(sc=>sc.items.forEach(i=>itemMap[i.k]=i.l));
+  let txt=`RELATÓRIO DE INSPEÇÃO AVAC\n${'='.repeat(40)}\n`;
+  txt+=`Instalação: ${s.meta?.loja||'—'}\nData: ${s.meta?.data||'—'}\nAuditor: ${currentUser?.displayName||'—'}\n`;
+  txt+=`Resultado global: ${pct}% (${ok}/${tot} pontos)\n\n`;
+  const noks=[];allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${e.name}: ${itemMap[k]||k}`);}));
+  if(noks.length){txt+=`NÃO CONFORMIDADES (${noks.length}):\n`;noks.forEach(n=>txt+=`  ✗ ${n}\n`);txt+='\n';}
+  allEqs.forEach(e=>{let eOk=0,eTot=0;Object.values(e.checks||{}).forEach(v=>{if(v==='ok'){eOk++;eTot++;}else if(v==='nok')eTot++;});const ep=eTot>0?Math.round(eOk/eTot*100):null;txt+=`${e.name}${e.marca?' ('+e.marca+' '+e.modelo+')':''}: ${ep!==null?ep+'%':'—'}\n`;if(e.note)txt+=`  Notas: ${e.note}\n`;});
+  const blob=new Blob([txt],{type:'text/plain'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`avac_${(s.meta?.loja||'insp').replace(/\s/g,'_')}.txt`;a.click();URL.revokeObjectURL(url);
+  showToast('Texto exportado','ok');
+};
+
+// ── NAV ───────────────────────────────────────────────────────────────────────
+window.showPage = id => { document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0,0); };
+window.showSessions = () => { currentSessionId=null; currentSession=null; if(dbListener){dbListener();dbListener=null;} showSessions(); };
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+window.showToast = (msg,type) => { const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type==='ok'?' tok':type==='err'?' terr':' tinf');setTimeout(()=>t.classList.remove('show'),2500); };
+
+</script>
+</body>
+</html>
