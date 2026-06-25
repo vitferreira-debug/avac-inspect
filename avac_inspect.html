@@ -193,14 +193,15 @@ body{overflow-x:hidden}
   <div class="auth-wrap">
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
-    <div class="auth-sub">Inspeção em campo com backup automático e colaboração em tempo real.</div>
-    <button class="auth-btn" onclick="signInGoogle()">
-      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
-      Entrar com Google
-    </button>
-    <div class="sync-status" id="authStatus">
-      <div class="sync-dot" id="authDot"></div>
-      <span id="authLabel">A verificar sessão...</span>
+    <div class="auth-sub">Introduz o código de acesso da equipa.</div>
+    <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
+      <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
+      <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
+      <button class="auth-btn" onclick="signInPass()" style="background:var(--accent);color:#0c1a2e;border:none;border-radius:var(--rsm);padding:12px;font-size:14px;font-weight:700;cursor:pointer;width:100%;justify-content:center">Entrar</button>
+    </div>
+    <div class="sync-status" style="margin-top:12px">
+      <div class="sync-dot ok"></div>
+      <span id="authLabel">Pronto</span>
     </div>
   </div>
 </div>
@@ -278,7 +279,7 @@ body{overflow-x:hidden}
 <!-- FIREBASE -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as fbSignOut, onAuthStateChanged, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getDatabase, ref, set, get, onValue, push, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
 const firebaseConfig = {
@@ -335,30 +336,33 @@ let newCounts = {};
 let autoSaveTimer = null;
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
-window.signInGoogle = async () => {
-  try {
-    const provider = new GoogleAuthProvider();
-    await setPersistence(auth, browserLocalPersistence);
-    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-    if(isMobile) {
-      await signInWithRedirect(auth, provider);
-    } else {
-      await signInWithPopup(auth, provider);
-    }
-  } catch(e) { showToast('Erro ao entrar: ' + e.message, 'err'); }
-};
+// SHARED ACCOUNT — one Firebase email/pass for the whole team
+const TEAM_EMAIL = 'vitor.ferreira.sgs@gmail.com';
+const TEAM_PASS_HASH = 'Avac2026!'; // will be checked client-side
 
-// Handle redirect result on page load
-setPersistence(auth, browserLocalPersistence).then(() => {
-  return getRedirectResult(auth);
-}).then(result => {
-  if(result?.user) showToast('Bem-vindo, ' + result.user.displayName?.split(' ')[0] + '!', 'ok');
-}).catch(e => {
-  if(e.code && e.code !== 'auth/no-auth-event') showToast('Erro: ' + e.code, 'err');
-});
+window.signInPass = async () => {
+  const name = document.getElementById('authUser').value.trim();
+  const pass = document.getElementById('authPass').value;
+  if(!name) { showToast('Introduz o teu nome','err'); return; }
+  if(!pass) { showToast('Introduz o código de acesso','err'); return; }
+  document.getElementById('authLabel').textContent = 'A entrar...';
+  try {
+    await signInWithEmailAndPassword(auth, TEAM_EMAIL, pass);
+    // store local name since shared account
+    localStorage.setItem('avac_display_name', name);
+  } catch(e) {
+    document.getElementById('authLabel').textContent = 'Pronto';
+    if(e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+      showToast('Código de acesso incorrecto','err');
+    } else {
+      showToast('Erro: ' + e.code, 'err');
+    }
+  }
+};
 
 window.signOut = async () => {
   if(!confirm('Terminar sessão?')) return;
+  localStorage.removeItem('avac_display_name');
   await fbSignOut(auth);
 };
 
@@ -366,8 +370,8 @@ onAuthStateChanged(auth, user => {
   currentUser = user;
   if(user) {
     document.getElementById('userBadge').style.display = 'flex';
-    document.getElementById('userAvatar').src = user.photoURL || '';
-    document.getElementById('userName').textContent = user.displayName?.split(' ')[0] || '';
+    document.getElementById('userAvatar').style.display='none';
+    document.getElementById('userName').textContent = localStorage.getItem('avac_display_name') || 'Auditor';
     document.getElementById('settingsBtn').style.display = 'flex';
     showSessions();
   } else {
@@ -384,7 +388,7 @@ onAuthStateChanged(auth, user => {
 window.showSessions = async () => {
   showPage('pgSessions');
   document.getElementById('tbTitle').textContent = 'AVAC Inspect';
-  document.getElementById('tbSub').textContent = currentUser?.displayName?.split(' ')[0] || '';
+  document.getElementById('tbSub').textContent = localStorage.getItem('avac_display_name') || 'Auditor';
   document.getElementById('tbScore').style.display = 'none';
   if(dbListener) { dbListener(); dbListener = null; }
   const snap = await get(ref(db, `users/${currentUser.uid}/sessions`));
@@ -849,7 +853,7 @@ function updateTopScore() {
 function updateCollabBar() {
   // Presence: write own presence, show others
   const presRef = ref(db, `sessions_presence/${currentSessionId}/${currentUser.uid}`);
-  set(presRef, {name: currentUser.displayName?.split(' ')[0]||'Auditor', ts: Date.now()});
+  set(presRef, {name: localStorage.getItem('avac_display_name')||'Auditor', ts: Date.now()});
   onValue(ref(db, `sessions_presence/${currentSessionId}`), snap => {
     if(!snap.exists()) return;
     const users = Object.entries(snap.val()).filter(([uid,u])=>uid!==currentUser.uid&&(Date.now()-u.ts)<60000);
@@ -875,7 +879,7 @@ window.showReport = () => {
   html+=`<div class="report-section"><h3>Identificação</h3>
     <div class="rpt-row"><span>Instalação</span><span>${s.meta?.loja||'—'}</span></div>
     <div class="rpt-row"><span>Data</span><span>${s.meta?.data||'—'}</span></div>
-    <div class="rpt-row"><span>Auditor</span><span>${currentUser?.displayName||'—'}</span></div>
+    <div class="rpt-row"><span>Auditor</span><span>${localStorage.getItem('avac_display_name')||'—'}</span></div>
   </div>`;
   const allEqs=[...Object.values(s.utas||{}),...Object.values(s.chillers||{}),...Object.values(s.bombas||{}),...Object.values(s.vasos||{}),...Object.values(s.vrvs||{}),...Object.values(s.quadros||{})];
   const allSecs=[...UTA_CHECKS,...CHILLER_CHECKS,...BOMBA_CHECKS,...VASO_CHECKS,...VRV_CHECKS,...QUADRO_CHECKS];
