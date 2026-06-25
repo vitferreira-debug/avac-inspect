@@ -444,17 +444,24 @@ function buildSession(loja, data, counts) {
   return session;
 }
 
-async function openSession(id) {
+window.openSession = async function(id) {
   currentSessionId = id;
   if(dbListener) { dbListener(); dbListener = null; }
   // realtime listener
+  let firstLoad = true;
   dbListener = onValue(ref(db, `users/${currentUser.uid}/sessions/${id}`), snap => {
     if(!snap.exists()) return;
     currentSession = snap.val();
-    // preserve active indexes
-    renderInspection();
-    updateTopScore();
-    updateCollabBar();
+    if(firstLoad) {
+      firstLoad = false;
+      renderInspection();
+      updateTopScore();
+      updateCollabBar();
+    } else {
+      // Only update score and chips on remote changes, don't re-render form
+      updateTopScore();
+      updateChips();
+    }
   });
   showPage('pgInsp');
 }
@@ -735,7 +742,7 @@ function powerHTML(power) {
     <span class="measure-unit">kW</span>
   </div>`).join('');
   const total=POWER_FIELDS.reduce((a,f)=>a+(parseFloat(power[f.k])||0),0);
-  const totalRow=total>0?`<div class="measure-row"><span class="measure-label" style="font-weight:600;color:var(--text)">Total</span><span class="measure-computed">${total.toFixed(1)} kW</span></div>`:'';
+  const totalRow=`<div class="measure-row"><span class="measure-label" style="font-weight:600;color:var(--text)">Total</span><span class="measure-computed" id="power_total">${total>0?total.toFixed(1)+' kW':''}</span></div>`;
   return `<div class="section-block">
     <div class="section-hdr" onclick="toggleSec('${sid}')">
       <div class="section-hdr-left"><div class="section-icon">🔌</div><div class="section-title">Consumo elétrico — potências</div></div>
@@ -768,7 +775,19 @@ window.setCheck = (type, key, ck, val) => {
   currentSession[arr][key].checks[ck] = val;
   scheduleSave(dbPath(`${arr}/${key}/checks/${ck}`), val);
   scheduleSave(dbPath('updatedAt'), Date.now());
-  renderInspection();
+  // Update buttons in place without re-rendering
+  const btns = document.querySelectorAll(`[data-check="${key}_${ck}"]`);
+  btns.forEach(b => {
+    const v = b.getAttribute('data-val');
+    b.className = 't3' + (v === 'ok' ? (val==='ok'?' ok':'') : v === 'nok' ? (val==='nok'?' nok':'') : (val==='na'?' na':''));
+  });
+  // Update label color
+  const label = document.querySelector(`[data-label="${key}_${ck}"]`);
+  if(label) label.className = 'check-label' + (val==='nok'?' is-nok':'');
+  // Update section pct
+  updateSectionPct(type, key);
+  updateTopScore();
+  updateChips();
 };
 
 window.setMeta = (type, ekey, field, val) => {
@@ -787,7 +806,7 @@ window.setMeasure = (type, key, mk, val) => {
   if(!currentSession[arr][key].measures) currentSession[arr][key].measures={};
   currentSession[arr][key].measures[mk]=val;
   scheduleSave(dbPath(`${arr}/${key}/measures/${mk}`), val);
-  renderInspection();
+  updateComputedFields(type, key);
 };
 
 window.setNote = (type, key, val) => {
@@ -801,7 +820,7 @@ window.setPower = (k, val) => {
   if(!currentSession.power) currentSession.power={};
   currentSession.power[k]=val;
   scheduleSave(dbPath(`power/${k}`), val);
-  renderInspection();
+  updatePowerTotal();
 };
 
 function typeToArr(t) { return {uta:'utas',chiller:'chillers',bomba:'bombas',vaso:'vasos',vrv:'vrvs',quadro:'quadros'}[t]; }
@@ -953,6 +972,73 @@ window.exportText = () => {
   const blob=new Blob([txt],{type:'text/plain'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`avac_${(s.meta?.loja||'insp').replace(/\s/g,'_')}.txt`;a.click();URL.revokeObjectURL(url);
   showToast('Texto exportado','ok');
 };
+
+
+// ── SURGICAL UI UPDATES ───────────────────────────────────────────────────────
+function updateSectionPct(type, key) {
+  const arr = typeToArr(type);
+  const e = currentSession[arr]?.[key];
+  if(!e) return;
+  const allSecs = {uta:UTA_CHECKS,chiller:CHILLER_CHECKS,bomba:BOMBA_CHECKS,vaso:VASO_CHECKS,vrv:VRV_CHECKS,quadro:QUADRO_CHECKS}[type]||[];
+  allSecs.forEach(s => {
+    const sid = `s_${key}_${s.sec.replace(/\W/g,'_')}`;
+    const pctEl = document.querySelector(`#chev_${sid}`)?.parentElement?.querySelector('.section-pct');
+    if(!pctEl) return;
+    const secOk=s.items.filter(i=>(e.checks||{})[i.k]==='ok').length;
+    const secTot=s.items.filter(i=>(e.checks||{})[i.k]!==null&&(e.checks||{})[i.k]!=='na').length;
+    const pct=secTot>0?Math.round(secOk/secTot*100):null;
+    if(pct!==null){
+      pctEl.textContent=pct+'%';
+      pctEl.style.color=pct===100?'var(--ok)':pct>=75?'var(--warn)':'var(--nok)';
+    }
+  });
+}
+
+function updateChips() {
+  const groups = {uta:'utas',chiller:'chillers',bomba:'bombas',vaso:'vasos',vrv:'vrvs',quadro:'quadros'};
+  Object.entries(groups).forEach(([type,arr]) => {
+    const list = Object.entries(currentSession[arr]||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+    list.forEach(([key,e],i) => {
+      const chip = document.querySelector(`.eq-chip[onclick="switchEq('${type}',${i})"]`);
+      if(!chip) return;
+      const vals = Object.values(e.checks||{});
+      const hasNok = vals.some(v=>v==='nok');
+      const complete = vals.length>0 && vals.every(v=>v!==null);
+      const ai = activeIdxs[type]||0;
+      chip.className = i===ai?'eq-chip active':hasNok?'eq-chip hasnok':complete?'eq-chip complete':'eq-chip';
+    });
+  });
+}
+
+function updateComputedFields(type, key) {
+  const arr = typeToArr(type);
+  const e = currentSession[arr]?.[key];
+  if(!e) return;
+  const m = e.measures||{};
+  const vel=parseFloat(m.vel)||0,larg=parseFloat(m.larg)||0,alt=parseFloat(m.alt)||0;
+  const caudal=vel&&larg&&alt?Math.round(vel*(larg/100)*(alt/100)*3600):null;
+  const pelec=parseFloat(m.pelec)||0;
+  const ptherm=e.nominal?.potencia_termica_kw||null;
+  const eer=ptherm&&pelec?(ptherm/pelec).toFixed(2):null;
+  const dtc=m.tconduta&&m.tambiente?(parseFloat(m.tambiente)-parseFloat(m.tconduta)).toFixed(1):null;
+  const sid=`s_${key}_med`;
+  const body=document.getElementById(sid);
+  if(!body) return;
+  // Update or add computed rows
+  let compDiv = body.querySelector('.computed-rows');
+  if(!compDiv){compDiv=document.createElement('div');compDiv.className='computed-rows';body.appendChild(compDiv);}
+  let html='';
+  if(caudal) html+=`<div class="measure-row"><span class="measure-label">Caudal calculado</span><span class="measure-computed">${caudal} m³/h</span></div>`;
+  if(eer) html+=`<div class="measure-row"><span class="measure-label">EER real</span><span class="measure-computed">${eer}</span></div>`;
+  if(dtc) html+=`<div class="measure-row"><span class="measure-label">ΔT conduta</span><span class="measure-computed">${dtc} °C</span></div>`;
+  compDiv.innerHTML=html;
+}
+
+function updatePowerTotal() {
+  const total=POWER_FIELDS.reduce((a,f)=>a+(parseFloat((currentSession.power||{})[f.k])||0),0);
+  const el=document.getElementById('power_total');
+  if(el) el.textContent=total>0?total.toFixed(1)+' kW':'';
+}
 
 // ── NAV ───────────────────────────────────────────────────────────────────────
 window.goBack = () => { currentSessionId=null; currentSession=null; if(dbListener){dbListener();dbListener=null;} loadSessions(); };
