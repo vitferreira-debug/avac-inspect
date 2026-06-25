@@ -194,7 +194,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.4 — 25jun 22:30</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.5 — 25jun 22:45</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -679,7 +679,8 @@ function checksHTML(e, secs, type, key) {
             <button class="t3${v==='nok'?' nok':''}" data-check="${key}_${it.k}" data-val="nok" onclick="setCheck('${type}','${key}','${it.k}','nok')">NOK</button>
             <button class="t3${v==='na'?' na':''}" data-check="${key}_${it.k}" data-val="na" onclick="setCheck('${type}','${key}','${it.k}','na')">N/A</button>
           </div>
-          <label style="cursor:pointer;width:28px;height:28px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">📷<input type="file" accept="image/*" style="display:none" onchange="addPhoto('${type}','${key}','${it.k}',this)"></label>
+          <label style="cursor:pointer;width:28px;height:28px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0" title="Câmara">📷<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addPhoto('${type}','${key}','${it.k}',this)"></label>
+          <label style="cursor:pointer;width:28px;height:28px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0" title="Galeria">🖼<input type="file" accept="image/*" style="display:none" onchange="addPhoto('${type}','${key}','${it.k}',this)"></label>
         </div>
       </div>${photoThumb}`;
     }).join('');
@@ -782,13 +783,31 @@ window.setCheck = (type, key, ck, val) => {
   if(!currentSession[arr][key]) return;
   if(!currentSession[arr][key].checks) currentSession[arr][key].checks = {};
   currentSession[arr][key].checks[ck] = val;
-  // Update buttons visually without re-render
+  // Update buttons visually
   document.querySelectorAll(`[data-check="${key}_${ck}"]`).forEach(b => {
     const bv = b.getAttribute('data-val');
     b.className = 't3' + (bv===val ? (' '+val) : '');
   });
+  // Update label colour
   const lbl = document.querySelector(`[data-label="${key}_${ck}"]`);
   if(lbl) lbl.className = 'check-label' + (val==='nok'?' is-nok':'');
+  // Update section pct for this section
+  const allSecs = {uta:UTA_CHECKS,chiller:CHILLER_CHECKS,bomba:BOMBA_CHECKS,vaso:VASO_CHECKS,vrv:VRV_CHECKS,quadro:QUADRO_CHECKS}[type]||[];
+  allSecs.forEach(s => {
+    if(!s.items.some(i=>i.k===ck)) return;
+    const e = currentSession[arr][key];
+    const secOk = s.items.filter(i=>(e.checks||{})[i.k]==='ok').length;
+    const secTot = s.items.filter(i=>(e.checks||{})[i.k]!==null&&(e.checks||{})[i.k]!=='na').length;
+    const pct = secTot>0 ? Math.round(secOk/secTot*100) : null;
+    const sid = `s_${key}_${s.sec.replace(/\W/g,'_')}`;
+    const chevEl = document.getElementById('chev_'+sid);
+    const pctEl = chevEl?.parentElement?.querySelector('.section-pct');
+    if(pctEl && pct!==null) {
+      pctEl.textContent = pct+'%';
+      pctEl.style.color = pct===100?'var(--ok)':pct>=75?'var(--warn)':'var(--nok)';
+    }
+  });
+  // Update global score pill
   updateTopScore();
   scheduleSave(dbPath(`${arr}/${key}/checks/${ck}`), val);
 };
