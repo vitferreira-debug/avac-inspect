@@ -195,7 +195,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.6 — 25jun 23:00</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.7 — usa ponto decimal</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -706,7 +706,7 @@ function measuresHTML(e, fields, type, key) {
   const sid=`s_${key}_med`;
   const rows=fields.map(f=>`<div class="measure-row">
     <span class="measure-label">${f.l}</span>
-    <input class="measure-input" type="text" inputmode="decimal" value="${m[f.k]||''}" placeholder="—" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
+    <input class="measure-input" type="text" inputmode="decimal" value="${m[f.k]||''}" placeholder="0.0" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
     <span class="measure-unit">${f.u}</span>
   </div>`).join('');
   const comp=[
@@ -824,6 +824,7 @@ window.setMeta = (type, ekey, field, val) => {
 };
 
 window.setMeasure = (type, key, mk, val) => {
+  val = val.replace(',', '.');
   const arr=typeToArr(type);
   if(!currentSession[arr]?.[key]) return;
   if(!currentSession[arr][key].measures) currentSession[arr][key].measures={};
@@ -839,6 +840,7 @@ window.setNote = (type, key, val) => {
 };
 
 window.setPower = (k, val) => {
+  val = val.replace(',', '.');
   if(!currentSession.power) currentSession.power={};
   currentSession.power[k]=val;
   scheduleSave(dbPath(`power/${k}`), val);
