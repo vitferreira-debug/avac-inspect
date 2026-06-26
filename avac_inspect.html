@@ -9,6 +9,7 @@
 <title>AVAC Inspect</title>
 <style>
 :root{--bg:#0f172a;--surface:#1e293b;--surface2:#273347;--border:#334155;--accent:#38bdf8;--accent-dim:#0c4a6e;--accent-text:#e0f2fe;--text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;--ok:#22c55e;--ok-bg:#052e16;--ok-border:#166534;--nok:#ef4444;--nok-bg:#450a0a;--nok-border:#991b1b;--warn:#f59e0b;--warn-bg:#1c0f00;--radius:10px;--rsm:6px}
+body.light{--bg:#f1f5f9;--surface:#ffffff;--surface2:#e2e8f0;--border:#cbd5e1;--accent:#0284c7;--accent-dim:#e0f2fe;--accent-text:#0c4a6e;--text:#0f172a;--text2:#475569;--text3:#94a3b8;--ok:#16a34a;--ok-bg:#dcfce7;--ok-border:#86efac;--nok:#dc2626;--nok-bg:#fee2e2;--nok-border:#fca5a5;--warn:#d97706;--warn-bg:#fef3c7;--warn-bg:#fef3c7}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:15px}
 body{overflow-x:hidden}
@@ -179,6 +180,7 @@ body{overflow-x:hidden}
   </div>
   <div class="topbar-right">
     <div class="score-pill" id="tbScore" style="display:none">—</div>
+    <button class="settings-btn" id="themeBtn" onclick="toggleTheme()" title="Tema claro/escuro">🌓</button>
     <button class="settings-btn" id="settingsBtn" onclick="openSettings()" style="display:none" title="Configurações">⚙️</button>
     <div class="user-badge" id="userBadge" style="display:none" onclick="signOut()">
       <img class="user-avatar" id="userAvatar" src="" alt="">
@@ -195,7 +197,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.7 — usa ponto decimal</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.8</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -704,11 +706,24 @@ function measuresHTML(e, fields, type, key) {
   const eer=ptherm&&pelec?(ptherm/pelec).toFixed(2):null;
   const dtc=m.tconduta&&m.tambiente?(parseFloat(m.tambiente)-parseFloat(m.tconduta)).toFixed(1):null;
   const sid=`s_${key}_med`;
-  const rows=fields.map(f=>`<div class="measure-row">
-    <span class="measure-label">${f.l}</span>
-    <input class="measure-input" type="text" inputmode="decimal" value="${m[f.k]||''}" placeholder="0.0" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
-    <span class="measure-unit">${f.u}</span>
-  </div>`).join('');
+  const rows=fields.map(f=>{
+    const row = `<div class="measure-row">
+      <span class="measure-label">${f.l}</span>
+      <input class="measure-input" type="text" inputmode="decimal" value="${m[f.k]||''}" placeholder="0.0" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
+      <span class="measure-unit">${f.u}</span>
+    </div>`;
+    // Insert caudal row after altura conduta
+    if(f.k==='alt') {
+      const vel=parseFloat(m.vel)||0, larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0;
+      const caudal = vel&&larg&&alt ? Math.round(vel*(larg/100)*(alt/100)*3600) : null;
+      const cRow = `<div class="measure-row" style="background:var(--accent-dim);border-radius:var(--rsm);margin:2px 0">
+        <span class="measure-label" style="color:var(--accent);font-weight:600">Caudal calc.</span>
+        <span class="measure-computed" id="caudal_${key}">${caudal ? caudal+' m³/h' : '—'}</span>
+      </div>`;
+      return row + cRow;
+    }
+    return row;
+  }).join('');
   const comp=[
     caudal?`<div class="measure-row"><span class="measure-label">Caudal calculado</span><span class="measure-computed">${caudal} m³/h</span></div>`:'',
     eer?`<div class="measure-row"><span class="measure-label">EER real</span><span class="measure-computed">${eer}</span></div>`:'',
@@ -824,12 +839,20 @@ window.setMeta = (type, ekey, field, val) => {
 };
 
 window.setMeasure = (type, key, mk, val) => {
-  val = val.replace(',', '.');
+  val = val.toString().replace(',', '.');
   const arr=typeToArr(type);
   if(!currentSession[arr]?.[key]) return;
   if(!currentSession[arr][key].measures) currentSession[arr][key].measures={};
   currentSession[arr][key].measures[mk]=val;
   scheduleSave(dbPath(`${arr}/${key}/measures/${mk}`), val);
+  // Update caudal display live
+  if(['vel','larg','alt'].includes(mk)) {
+    const m = currentSession[arr][key].measures;
+    const v=parseFloat(m.vel)||0, l=parseFloat(m.larg)||0, a=parseFloat(m.alt)||0;
+    const caudal = v&&l&&a ? Math.round(v*(l/100)*(a/100)*3600) : null;
+    const el = document.getElementById('caudal_'+key);
+    if(el) el.textContent = caudal ? caudal+' m³/h' : '—';
+  }
 };
 
 window.setNote = (type, key, val) => {
@@ -1126,6 +1149,15 @@ function updatePowerTotal() {
 // ── NAV ───────────────────────────────────────────────────────────────────────
 window.goBack = () => { currentSessionId=null; currentSession=null; if(dbListener){dbListener();dbListener=null;} loadSessions(); };
 window.showPage = id => { document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0,0); };
+
+window.toggleTheme = () => {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('avac_theme', isLight ? 'light' : 'dark');
+  document.getElementById('themeBtn').textContent = isLight ? '🌙' : '🌓';
+};
+
+// Apply saved theme on load
+(()=>{ if(localStorage.getItem('avac_theme')==='light'){ document.body.classList.add('light'); document.getElementById('themeBtn').textContent='🌙'; }})();
 window.showSessions = () => { currentSessionId=null; currentSession=null; if(dbListener){dbListener();dbListener=null;} loadSessions(); };
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
