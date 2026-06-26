@@ -7,6 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
 <title>AVAC Inspect</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
 <style>
 :root{--bg:#0f172a;--surface:#1e293b;--surface2:#273347;--border:#334155;--accent:#38bdf8;--accent-dim:#0c4a6e;--accent-text:#e0f2fe;--text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;--ok:#22c55e;--ok-bg:#052e16;--ok-border:#166534;--nok:#ef4444;--nok-bg:#450a0a;--nok-border:#991b1b;--warn:#f59e0b;--warn-bg:#1c0f00;--radius:10px;--rsm:6px}
 body.light{--bg:#f1f5f9;--surface:#ffffff;--surface2:#e2e8f0;--border:#cbd5e1;--accent:#0284c7;--accent-dim:#e0f2fe;--accent-text:#0c4a6e;--text:#0f172a;--text2:#475569;--text3:#94a3b8;--ok:#16a34a;--ok-bg:#dcfce7;--ok-border:#86efac;--nok:#dc2626;--nok-bg:#fee2e2;--nok-border:#fca5a5;--warn:#d97706;--warn-bg:#fef3c7;--warn-bg:#fef3c7}
@@ -197,7 +198,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.5</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.9</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -274,8 +275,7 @@ body{overflow-x:hidden}
 <div class="page" id="pgReport">
   <div id="reportBody"></div>
   <div class="rpt-bottom">
-    <button class="btn-export" style="background:var(--accent);color:#0c1a2e" onclick="exportJSON()">⬇ Exportar JSON</button>
-    <button class="btn-export" style="background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-border)" onclick="exportText()">📄 Exportar texto</button>
+    <button class="btn-export" style="background:#2B579A;color:#fff" onclick="exportDOCX()">📄 Exportar Word (.docx)</button>
     <button class="btn-export" style="background:var(--surface);color:var(--text2);border:1px solid var(--border)" onclick="showPage('pgInsp')">← Voltar à inspeção</button>
   </div>
 </div>
@@ -949,7 +949,17 @@ Responde APENAS em JSON válido, sem markdown, com esta estrutura:
 {"caudal_m3h":number_or_null,"potencia_termica_kw":number_or_null,"potencia_eletrica_kw":number_or_null,"cop_nominal":number_or_null,"eer_nominal":number_or_null,"nota":"string curta"}
 Se não souberes, usa null. Não inventes.`;
   try {
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:400,messages:[{role:'user',content:prompt}]})});
+    const body = JSON.stringify({model:'claude-haiku-4-5',max_tokens:400,messages:[{role:'user',content:prompt}]});
+  const r=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key':'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',
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body
+  });
     const d=await r.json();
     const txt=d.content.filter(b=>b.type==='text').map(b=>b.text).join('');
     const parsed=JSON.parse(txt.replace(/```json|```/g,'').trim());
@@ -969,7 +979,13 @@ Se não souberes, usa null. Não inventes.`;
     // Re-render to show updated fields
     renderInspection();
     showToast('Dados nominais carregados','ok');
-  } catch(err){ showToast('Não foi possível obter dados nominais','err'); }
+  } catch(err){
+    showToast('Erro CORS — a abrir alternativa...','err');
+    // Fallback: open sendPrompt with the query
+    if(typeof sendPrompt === 'function') {
+      sendPrompt('Dados nominais do equipamento AVAC marca "'+e.marca+'" modelo "'+e.modelo+'". Responde em JSON: {"caudal_m3h":number_or_null,"potencia_termica_kw":number_or_null,"potencia_eletrica_kw":number_or_null,"cop_nominal":number_or_null,"eer_nominal":number_or_null,"nota":"string"}');
+    }
+  }
   finally{ btn.textContent='✨ Dados nominais (IA)'; btn.disabled=false; }
 };
 
@@ -1222,6 +1238,304 @@ function updatePowerTotal() {
   const el=document.getElementById('power_total');
   if(el) el.textContent=total>0?total.toFixed(1)+' kW':'';
 }
+
+
+// ── EXPORT DOCX ──────────────────────────────────────────────────────────────
+window.exportDOCX = async () => {
+  if(!window.docx) { showToast('Biblioteca docx não carregada','err'); return; }
+  showToast('A gerar documento...','inf');
+  const s = currentSession;
+  const {ok,tot,pct} = calcScoreFromSession(s);
+  const auditor = localStorage.getItem('avac_display_name')||'—';
+  const {
+    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+    ImageRun, AlignmentType, HeadingLevel, BorderStyle, WidthType,
+    ShadingType, VerticalAlign, PageNumber, Header, Footer, TabStopType,
+    TabStopPosition
+  } = window.docx;
+
+  const PAGE_W = 11906; // A4 width in DXA
+  const MARGIN = 1134;  // ~2cm
+  const CONTENT_W = PAGE_W - MARGIN*2;
+
+  const border = { style: BorderStyle.SINGLE, size: 4, color: "CCCCCC" };
+  const borderHeader = { style: BorderStyle.SINGLE, size: 8, color: "1a3a5c" };
+  const borders = { top: border, bottom: border, left: border, right: border };
+  const noBorder = { top: {style:BorderStyle.NONE,size:0,color:"FFFFFF"}, bottom: {style:BorderStyle.NONE,size:0,color:"FFFFFF"}, left: {style:BorderStyle.NONE,size:0,color:"FFFFFF"}, right: {style:BorderStyle.NONE,size:0,color:"FFFFFF"} };
+
+  const txt = (text, opts={}) => new TextRun({ text: String(text||''), font:"Arial", size: opts.size||20, bold:opts.bold||false, color:opts.color||"000000", ...opts });
+  const par = (children, opts={}) => new Paragraph({ children: Array.isArray(children)?children:[children], alignment: opts.align||AlignmentType.LEFT, spacing:{before:opts.before||60,after:opts.after||60}, ...opts });
+  const cell = (children, opts={}) => new TableCell({
+    children: Array.isArray(children)?children:[children],
+    borders: opts.borders||borders,
+    width: opts.width ? {size:opts.width,type:WidthType.DXA} : undefined,
+    shading: opts.fill ? {fill:opts.fill,type:ShadingType.CLEAR} : undefined,
+    margins: {top:80,bottom:80,left:120,right:120},
+    verticalAlign: VerticalAlign.CENTER,
+    columnSpan: opts.span||1,
+  });
+
+  const scoreColor = pct>=90?"1a7a4a":pct>=75?"b85c00":"c0392b";
+  const statusBadge = (v) => {
+    if(v==='ok') return txt('OK',{bold:true,color:'1a7a4a'});
+    if(v==='nok') return txt('NOK',{bold:true,color:'c0392b'});
+    return txt('N/A',{color:'888888'});
+  };
+
+  const allSecs = [...UTA_CHECKS,...CHILLER_CHECKS,...BOMBA_CHECKS,...VASO_CHECKS,...VRV_CHECKS,...QUADRO_CHECKS];
+  const itemMap = {};
+  allSecs.forEach(sec=>sec.items.forEach(i=>itemMap[i.k]=i.l));
+
+  const children = [];
+
+  // ── HEADER INFO with real logos ──
+  const sgsArr = (() => { const b=atob(SGS_LOGO_B64); const a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a; })();
+  const inditexArr = (() => { const b=atob(INDITEX_LOGO_B64); const a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a; })();
+  children.push(new Table({
+    width:{size:CONTENT_W,type:WidthType.DXA},
+    columnWidths:[Math.round(CONTENT_W*0.35),Math.round(CONTENT_W*0.3),Math.round(CONTENT_W*0.35)],
+    rows:[new TableRow({children:[
+      cell([par([new ImageRun({data:sgsArr,transformation:{width:80,height:40},type:'png'})])],{borders:noBorder,width:Math.round(CONTENT_W*0.35)}),
+      cell([par([txt('')])],{borders:noBorder,width:Math.round(CONTENT_W*0.3)}),
+      cell([par([new ImageRun({data:inditexArr,transformation:{width:100,height:30},type:'png'})],{align:AlignmentType.RIGHT})],{borders:noBorder,width:Math.round(CONTENT_W*0.35)}),
+    ]})]
+  }));
+
+  // Title bar
+  children.push(new Table({
+    width:{size:CONTENT_W,type:WidthType.DXA},
+    columnWidths:[CONTENT_W],
+    rows:[new TableRow({children:[
+      cell([par([txt('RELATÓRIO DE INSPEÇÃO AVAC',{bold:true,size:28,color:'FFFFFF'})],{align:AlignmentType.CENTER})],
+        {borders:noBorder,fill:'1a3a5c',width:CONTENT_W}),
+    ]})]
+  }));
+
+  children.push(par(''));
+
+  // Identification table
+  children.push(new Table({
+    width:{size:CONTENT_W,type:WidthType.DXA},
+    columnWidths:[2500,CONTENT_W-2500],
+    rows:[
+      new TableRow({children:[
+        cell([par([txt('Nº Relatório',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt('___________________',{size:18})])],{width:CONTENT_W-2500}),
+      ]}),
+      new TableRow({children:[
+        cell([par([txt('Instalação / Loja',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt(s.meta?.loja||'—',{size:18})])],{width:CONTENT_W-2500}),
+      ]}),
+      new TableRow({children:[
+        cell([par([txt('Data da inspeção',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt(s.meta?.data||'—',{size:18})])],{width:CONTENT_W-2500}),
+      ]}),
+      new TableRow({children:[
+        cell([par([txt('Auditor',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt(auditor,{size:18})])],{width:CONTENT_W-2500}),
+      ]}),
+      new TableRow({children:[
+        cell([par([txt('Resultado Global',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt(pct+'% ('+ok+'/'+tot+' pontos)',{bold:true,size:18,color:scoreColor})])],{width:CONTENT_W-2500}),
+      ]}),
+    ]
+  }));
+
+  children.push(par(''));
+
+  // NOKs section
+  const allEqs = [...Object.values(s.utas||{}),...Object.values(s.chillers||{}),...Object.values(s.bombas||{}),...Object.values(s.vasos||{}),...Object.values(s.vrvs||{}),...Object.values(s.quadros||{})];
+  const noks = [];
+  allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${e.name}: ${itemMap[k]||k}`);}));
+
+  if(noks.length) {
+    children.push(par([txt('NÃO CONFORMIDADES',{bold:true,size:22,color:'c0392b'})],{before:160,after:80}));
+    children.push(new Table({
+      width:{size:CONTENT_W,type:WidthType.DXA},
+      columnWidths:[CONTENT_W],
+      rows: noks.map(n=>new TableRow({children:[
+        cell([par([txt('⚠ '+n,{size:18,color:'c0392b'})])],{fill:'FDECEA',width:CONTENT_W}),
+      ]}))
+    }));
+    children.push(par(''));
+  }
+
+  // Equipment details
+  children.push(par([txt('DETALHE POR EQUIPAMENTO',{bold:true,size:22,color:'1a3a5c'})],{before:160,after:80}));
+
+  const renderEqSection = async (eqMap, secChecks, label) => {
+    const list = Object.values(eqMap||{});
+    if(!list.length) return;
+
+    for(const e of list) {
+      // Equipment header
+      children.push(new Table({
+        width:{size:CONTENT_W,type:WidthType.DXA},
+        columnWidths:[CONTENT_W],
+        rows:[new TableRow({children:[
+          cell([par([txt((e.name||'')+(e.marca?' — '+e.marca+(e.modelo?' '+e.modelo:''):''),{bold:true,size:20,color:'FFFFFF'})],{align:AlignmentType.LEFT})],
+            {borders:noBorder,fill:'2B579A',width:CONTENT_W}),
+        ]})]
+      }));
+
+      // Nominal data row if available
+      if(e.pterm_nom||e.pelec_nom) {
+        children.push(new Table({
+          width:{size:CONTENT_W,type:WidthType.DXA},
+          columnWidths:[CONTENT_W/2,CONTENT_W/2],
+          rows:[new TableRow({children:[
+            cell([par([txt('Pot. térmica nom.: '+(e.pterm_nom||'—')+' kW',{size:18})])],{fill:'EEF4FB',width:CONTENT_W/2}),
+            cell([par([txt('Pot. elétrica nom.: '+(e.pelec_nom||'—')+' kW',{size:18})])],{fill:'EEF4FB',width:CONTENT_W/2}),
+          ]})]
+        }));
+      }
+
+      // Checks table
+      for(const sec of secChecks) {
+        children.push(par([txt(sec.sec,{bold:true,size:18,color:'444444'})],{before:80,after:40}));
+        const rows = sec.items.map(it=>{
+          const v = (e.checks||{})[it.k];
+          const photos = ((e.photos||{})[it.k]||[]);
+          return new TableRow({children:[
+            cell([par([txt(it.l,{size:18})])],{width:Math.round(CONTENT_W*0.75)}),
+            cell([par([statusBadge(v)],{align:AlignmentType.CENTER})],{
+              fill: v==='ok'?'E8F8EE':v==='nok'?'FDECEA':'F5F5F5',
+              width:Math.round(CONTENT_W*0.25)
+            }),
+          ]});
+        });
+        children.push(new Table({width:{size:CONTENT_W,type:WidthType.DXA},columnWidths:[Math.round(CONTENT_W*0.75),Math.round(CONTENT_W*0.25)],rows}));
+      }
+
+      // Measurements
+      const m = e.measures||{};
+      const measRows = [];
+      if(m.vel) measRows.push(['Velocidade ar', m.vel+' m/s']);
+      if(m.larg) measRows.push(['Largura conduta', m.larg+' cm']);
+      if(m.alt) measRows.push(['Altura conduta', m.alt+' cm']);
+      if(m.diam) measRows.push(['Diâmetro conduta', m.diam+' cm']);
+      if(m.tsaida) measRows.push(['Temp. saída (insuflação)', m.tsaida+' °C']);
+      if(m.tentrada) measRows.push(['Temp. entrada (retorno)', m.tentrada+' °C']);
+      if(m.tgtc) measRows.push(['Temp. lida na GTC', m.tgtc+' °C']);
+      if(m.corrente) measRows.push(['Corrente (I)', m.corrente+' A']);
+      if(m.fp) measRows.push(['Fator de potência', m.fp]);
+      // Computed
+      const vel=parseFloat(m.vel)||0, larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0, diam=parseFloat(m.diam)||0;
+      const isCirc=(m.conduta||'Retangular')==='Circular';
+      const isMono=(m.motor||'Trifásico 400V')==='Monofásico 230V';
+      const q_m3s=isCirc?(vel>0&&diam>0?vel*Math.PI*Math.pow(diam/100/2,2):0):(vel>0&&larg>0&&alt>0?vel*(larg/100)*(alt/100):0);
+      const q_m3h=q_m3s>0?Math.round(q_m3s*3600):null;
+      const ts=m.tsaida!==undefined&&m.tsaida!==''?parseFloat(m.tsaida):NaN;
+      const te=m.tentrada!==undefined&&m.tentrada!==''?parseFloat(m.tentrada):NaN;
+      const dt=(!isNaN(ts)&&!isNaN(te))?+(te-ts).toFixed(1):null;
+      const pterm=q_m3s>0&&dt!==null?+(q_m3s*1.225*1.006*dt*1.1).toFixed(2):null;
+      const corr=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
+      const V=isMono?230:400;
+      const pelec=corr>0&&fp>0?+((isMono?1:Math.sqrt(3))*V*corr*fp/1000).toFixed(2):null;
+      const efic=pterm&&pelec&&pelec>0?+(pterm/pelec).toFixed(2):null;
+      if(q_m3h) measRows.push(['Caudal calculado', q_m3h+' m³/h']);
+      if(dt!==null) measRows.push(['ΔT (entrada−saída)', dt+' °C']);
+      if(pterm) measRows.push(['Pot. térmica (ar húmido)', pterm+' kW']);
+      if(pelec) measRows.push(['Pot. elétrica calculada', pelec+' kW']);
+      if(efic) measRows.push(['Eficiência (Pt/Pe)', String(efic)]);
+
+      if(measRows.length) {
+        children.push(par([txt('Medições',{bold:true,size:18,color:'444444'})],{before:80,after:40}));
+        children.push(new Table({
+          width:{size:CONTENT_W,type:WidthType.DXA},
+          columnWidths:[Math.round(CONTENT_W*0.6),Math.round(CONTENT_W*0.4)],
+          rows: measRows.map(([label,val])=>new TableRow({children:[
+            cell([par([txt(label,{size:18})])],{fill:'F5F8FB',width:Math.round(CONTENT_W*0.6)}),
+            cell([par([txt(val,{bold:true,size:18})])],{width:Math.round(CONTENT_W*0.4)}),
+          ]}))
+        }));
+      }
+
+      // Photos
+      const allPhotos = [];
+      Object.entries(e.photos||{}).forEach(([ck,photos])=>{
+        (photos||[]).forEach(p=>allPhotos.push({label:itemMap[ck]||ck, src:p}));
+      });
+      if(allPhotos.length) {
+        children.push(par([txt('Fotografias',{bold:true,size:18,color:'444444'})],{before:80,after:40}));
+        for(const ph of allPhotos) {
+          try {
+            const base64 = ph.src.split(',')[1];
+            const imgType = ph.src.startsWith('data:image/png')?'png':'jpeg';
+            const byteStr = atob(base64);
+            const arr = new Uint8Array(byteStr.length);
+            for(let i=0;i<byteStr.length;i++) arr[i]=byteStr.charCodeAt(i);
+            children.push(par([txt(ph.label,{size:16,color:'666666'})],{before:40,after:20}));
+            children.push(par([new ImageRun({data:arr,transformation:{width:300,height:200},type:imgType})]));
+          } catch(e2) { /* skip broken image */ }
+        }
+      }
+
+      // Notes
+      if(e.note) {
+        children.push(par([txt('Notas: ',{bold:true,size:18}),txt(e.note,{size:18})],{before:80}));
+      }
+      children.push(par('',{before:120}));
+    }
+  };
+
+  await renderEqSection(s.utas, UTA_CHECKS, 'UTAs');
+  await renderEqSection(s.chillers, CHILLER_CHECKS, 'Chillers');
+  await renderEqSection(s.bombas, BOMBA_CHECKS, 'Bombas');
+  await renderEqSection(s.vasos, VASO_CHECKS, 'Vasos');
+  await renderEqSection(s.vrvs, VRV_CHECKS, 'VRVs');
+  await renderEqSection(s.quadros, QUADRO_CHECKS, 'Quadros');
+
+  // Power section
+  const pwTotal = POWER_FIELDS.reduce((a,f)=>a+(parseFloat((s.power||{})[f.k])||0),0);
+  if(pwTotal>0) {
+    children.push(par([txt('CONSUMO ELÉTRICO',{bold:true,size:22,color:'1a3a5c'})],{before:160,after:80}));
+    const pwRows = POWER_FIELDS.filter(f=>(s.power||{})[f.k]).map(f=>
+      new TableRow({children:[
+        cell([par([txt(f.l,{size:18})])],{fill:'F5F8FB',width:Math.round(CONTENT_W*0.6)}),
+        cell([par([txt(parseFloat(s.power[f.k]).toFixed(1)+' kW',{bold:true,size:18})])],{width:Math.round(CONTENT_W*0.4)}),
+      ]})
+    );
+    pwRows.push(new TableRow({children:[
+      cell([par([txt('TOTAL',{bold:true,size:18})])],{fill:'E8EEF4',width:Math.round(CONTENT_W*0.6)}),
+      cell([par([txt(pwTotal.toFixed(1)+' kW',{bold:true,size:18,color:'1a3a5c'})])],{fill:'E8EEF4',width:Math.round(CONTENT_W*0.4)}),
+    ]}));
+    children.push(new Table({width:{size:CONTENT_W,type:WidthType.DXA},columnWidths:[Math.round(CONTENT_W*0.6),Math.round(CONTENT_W*0.4)],rows:pwRows}));
+  }
+
+  // Footer note
+  children.push(par('',{before:200}));
+  children.push(par([txt('Documento gerado automaticamente pelo sistema AVAC Inspect — SGS Portugal, S.A.',{size:16,color:'888888'})],{align:AlignmentType.CENTER}));
+
+  const doc = new Document({
+    styles:{
+      default:{document:{run:{font:"Arial",size:20}}},
+    },
+    sections:[{
+      properties:{
+        page:{
+          size:{width:11906,height:16838},
+          margin:{top:MARGIN,right:MARGIN,bottom:MARGIN,left:MARGIN}
+        }
+      },
+      children
+    }]
+  });
+
+  try {
+    const buffer = await Packer.toBuffer(doc);
+    const blob = new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url;
+    a.download=`AVAC_${(s.meta?.loja||'insp').replace(/\s/g,'_')}_${s.meta?.data||'nd'}.docx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Documento Word gerado!','ok');
+  } catch(err) {
+    showToast('Erro ao gerar documento: '+err.message,'err');
+  }
+};
 
 // ── NAV ───────────────────────────────────────────────────────────────────────
 window.deleteSession = async (id, name) => {
