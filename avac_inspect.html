@@ -198,7 +198,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v3.0</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v3.1</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -1251,12 +1251,22 @@ window.exportDOCX = async () => {
   const s = currentSession;
   const {ok,tot,pct} = calcScoreFromSession(s);
   const auditor = localStorage.getItem('avac_display_name')||'—';
-  const {
-    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-    ImageRun, AlignmentType, HeadingLevel, BorderStyle, WidthType,
-    ShadingType, VerticalAlign, PageNumber, Header, Footer, TabStopType,
-    TabStopPosition
-  } = window.docx;
+  const docxLib = window.docx;
+  const Document = docxLib.Document;
+  const Packer = docxLib.Packer;
+  const Paragraph = docxLib.Paragraph;
+  const TextRun = docxLib.TextRun;
+  const Table = docxLib.Table;
+  const TableRow = docxLib.TableRow;
+  const TableCell = docxLib.TableCell;
+  const ImageRun = docxLib.ImageRun;
+  const AlignmentType = docxLib.AlignmentType;
+  const HeadingLevel = docxLib.HeadingLevel;
+  const BorderStyle = docxLib.BorderStyle;
+  const WidthType = docxLib.WidthType;
+  const ShadingType = docxLib.ShadingType;
+  const VerticalAlign = docxLib.VerticalAlign;
+  console.log('docx lib loaded:', Object.keys(docxLib).slice(0,10));
 
   const PAGE_W = 11906; // A4 width in DXA
   const MARGIN = 1134;  // ~2cm
@@ -1537,7 +1547,8 @@ window.exportDOCX = async () => {
     URL.revokeObjectURL(url);
     showToast('Documento Word gerado!','ok');
   } catch(err) {
-    showToast('Erro ao gerar documento: '+err.message,'err');
+    console.error('DOCX error:', err);
+    showToast('Erro: '+err.message,'err');
   }
 };
 
