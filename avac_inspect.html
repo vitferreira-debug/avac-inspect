@@ -197,7 +197,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.8</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.9</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -317,8 +317,10 @@ const UTA_CHECKS = [
   {sec:'Temperatura',icon:'🌡',items:[{k:'t1',l:'Desvio temp. ambiente vs GTC ≤ 1°C'}]},
 ];
 const UTA_MEASURES = [
+  {k:'conduta',l:'Formato da conduta',u:'',type:'select',opts:['Retangular','Circular']},
   {k:'vel',l:'Velocidade ar',u:'m/s'},{k:'larg',l:'Largura conduta',u:'cm'},
-  {k:'alt',l:'Altura conduta',u:'cm'},{k:'tconduta',l:'Temp. conduta',u:'°C'},
+  {k:'alt',l:'Altura conduta',u:'cm'},{k:'diam',l:'Diâmetro conduta',u:'cm'},
+  {k:'tconduta',l:'Temp. conduta',u:'°C'},
   {k:'tambiente',l:'Temp. ambiente',u:'°C'},{k:'tgtc',l:'Temp. GTC',u:'°C'},
   {k:'pelec',l:'Potência elétrica',u:'kW'},{k:'fp',l:'Fator de potência',u:'—'},
 ];
@@ -706,16 +708,38 @@ function measuresHTML(e, fields, type, key) {
   const eer=ptherm&&pelec?(ptherm/pelec).toFixed(2):null;
   const dtc=m.tconduta&&m.tambiente?(parseFloat(m.tambiente)-parseFloat(m.tconduta)).toFixed(1):null;
   const sid=`s_${key}_med`;
+  const isCircular = (m.conduta||'Retangular') === 'Circular';
   const rows=fields.map(f=>{
+    // Hide larg/alt for circular, hide diam for rectangular
+    if(f.k==='larg'&&isCircular) return '';
+    if(f.k==='alt'&&isCircular) return '';
+    if(f.k==='diam'&&!isCircular) return '';
+    // Select field for conduta type
+    if(f.type==='select') {
+      return `<div class="measure-row">
+        <span class="measure-label">${f.l}</span>
+        <select style="padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;outline:none;text-align:right" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
+          ${f.opts.map(o=>`<option value="${o}" ${(m[f.k]||'Retangular')===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+        <span class="measure-unit"></span>
+      </div>`;
+    }
     const row = `<div class="measure-row">
       <span class="measure-label">${f.l}</span>
       <input class="measure-input" type="text" inputmode="decimal" value="${m[f.k]||''}" placeholder="0.0" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
       <span class="measure-unit">${f.u}</span>
     </div>`;
-    // Insert caudal row after altura conduta
-    if(f.k==='alt') {
-      const vel=parseFloat(m.vel)||0, larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0;
-      const caudal = vel&&larg&&alt ? Math.round(vel*(larg/100)*(alt/100)*3600) : null;
+    // Insert caudal row after last dimension field
+    if((f.k==='alt'&&!isCircular)||(f.k==='diam'&&isCircular)) {
+      const vel=parseFloat(m.vel)||0;
+      let caudal = null;
+      if(isCircular) {
+        const d=parseFloat(m.diam)||0;
+        caudal = vel&&d ? Math.round(vel*Math.PI*Math.pow(d/100/2,2)*3600) : null;
+      } else {
+        const larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0;
+        caudal = vel&&larg&&alt ? Math.round(vel*(larg/100)*(alt/100)*3600) : null;
+      }
       const cRow = `<div class="measure-row" style="background:var(--accent-dim);border-radius:var(--rsm);margin:2px 0">
         <span class="measure-label" style="color:var(--accent);font-weight:600">Caudal calc.</span>
         <span class="measure-computed" id="caudal_${key}">${caudal ? caudal+' m³/h' : '—'}</span>
@@ -846,12 +870,22 @@ window.setMeasure = (type, key, mk, val) => {
   currentSession[arr][key].measures[mk]=val;
   scheduleSave(dbPath(`${arr}/${key}/measures/${mk}`), val);
   // Update caudal display live
-  if(['vel','larg','alt'].includes(mk)) {
+  if(['vel','larg','alt','diam','conduta'].includes(mk)) {
     const m = currentSession[arr][key].measures;
-    const v=parseFloat(m.vel)||0, l=parseFloat(m.larg)||0, a=parseFloat(m.alt)||0;
-    const caudal = v&&l&&a ? Math.round(v*(l/100)*(a/100)*3600) : null;
+    const isCircular = (m.conduta||'Retangular') === 'Circular';
+    const v=parseFloat(m.vel)||0;
+    let caudal = null;
+    if(isCircular) {
+      const d=parseFloat(m.diam)||0;
+      caudal = v&&d ? Math.round(v*Math.PI*Math.pow(d/100/2,2)*3600) : null;
+    } else {
+      const l=parseFloat(m.larg)||0, a=parseFloat(m.alt)||0;
+      caudal = v&&l&&a ? Math.round(v*(l/100)*(a/100)*3600) : null;
+    }
     const el = document.getElementById('caudal_'+key);
     if(el) el.textContent = caudal ? caudal+' m³/h' : '—';
+    // Re-render measures if conduta type changed (to show/hide fields)
+    if(mk==='conduta') renderInspection();
   }
 };
 
