@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
 <title>AVAC Inspect</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 <style>
 :root{--bg:#0f172a;--surface:#1e293b;--surface2:#273347;--border:#334155;--accent:#38bdf8;--accent-dim:#0c4a6e;--accent-text:#e0f2fe;--text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;--ok:#22c55e;--ok-bg:#052e16;--ok-border:#166534;--nok:#ef4444;--nok-bg:#450a0a;--nok-border:#991b1b;--warn:#f59e0b;--warn-bg:#1c0f00;--radius:10px;--rsm:6px}
 body.light{--bg:#f1f5f9;--surface:#ffffff;--surface2:#e2e8f0;--border:#cbd5e1;--accent:#0284c7;--accent-dim:#e0f2fe;--accent-text:#0c4a6e;--text:#0f172a;--text2:#475569;--text3:#94a3b8;--ok:#16a34a;--ok-bg:#dcfce7;--ok-border:#86efac;--nok:#dc2626;--nok-bg:#fee2e2;--nok-border:#fca5a5;--warn:#d97706;--warn-bg:#fef3c7;--warn-bg:#fef3c7}
@@ -198,7 +198,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.9</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v3.0</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -1242,7 +1242,11 @@ function updatePowerTotal() {
 
 // ── EXPORT DOCX ──────────────────────────────────────────────────────────────
 window.exportDOCX = async () => {
-  if(!window.docx) { showToast('Biblioteca docx não carregada','err'); return; }
+  if(!window.docx) { 
+    showToast('A carregar biblioteca...','inf');
+    await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://unpkg.com/docx@8.5.0/build/index.umd.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+    if(!window.docx) { showToast('Erro ao carregar biblioteca docx','err'); return; }
+  }
   showToast('A gerar documento...','inf');
   const s = currentSession;
   const {ok,tot,pct} = calcScoreFromSession(s);
