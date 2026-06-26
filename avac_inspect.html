@@ -197,7 +197,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.2</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.4</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -412,12 +412,14 @@ async function loadSessions() {
     const scStr = sc.tot > 0 ? `${sc.pct}%` : '—';
     const scColor = sc.pct >= 90 ? 'var(--ok)' : sc.pct >= 75 ? 'var(--warn)' : 'var(--nok)';
     const d = s.meta?.data || '—';
-    return `<div class="session-card" onclick="openSession('${id}')">
-      <div class="session-info">
+    const nEq = Object.keys(s.utas||{}).length + Object.keys(s.chillers||{}).length + Object.keys(s.bombas||{}).length + Object.keys(s.vasos||{}).length + Object.keys(s.vrvs||{}).length + Object.keys(s.quadros||{}).length;
+    return `<div class="session-card" style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;cursor:pointer" onclick="openSession('${id}')">
         <div class="session-name">${s.meta?.loja || 'Sem nome'}</div>
-        <div class="session-meta">${d} · ${Object.keys(s.utas||{}).length + Object.keys(s.chillers||{}).length + Object.keys(s.bombas||{}).length + Object.keys(s.vasos||{}).length + Object.keys(s.vrvs||{}).length + Object.keys(s.quadros||{}).length} equip.</div>
+        <div class="session-meta">${d} · ${nEq} equip.</div>
       </div>
-      <div class="session-score" style="color:${scColor}">${scStr}</div>
+      <div class="session-score" style="color:${scColor};cursor:pointer" onclick="openSession('${id}')">${scStr}</div>
+      <button onclick="deleteSession('${id}','${(s.meta?.loja||'esta inspeção').replace(/'/g,'')}')" style="width:30px;height:30px;border-radius:6px;background:var(--nok-bg);border:1px solid var(--nok-border);color:var(--nok);font-size:14px;cursor:pointer;flex-shrink:0">🗑</button>
     </div>`;
   }).join('');
   document.getElementById('sessionsSubtitle').textContent = `${sorted.length} inspeção(ões)`;
@@ -714,16 +716,16 @@ function measuresHTML(e, fields, type, key) {
   const vel=parseFloat(m.vel)||0;
   const larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0, diam=parseFloat(m.diam)||0;
   const caudal_m3s = isCircular
-    ? (vel&&diam ? vel*Math.PI*Math.pow(diam/100/2,2) : 0)
-    : (vel&&larg&&alt ? vel*(larg/100)*(alt/100) : 0);
-  const caudal_m3h = caudal_m3s ? Math.round(caudal_m3s*3600) : null;
+    ? (vel>0&&diam>0 ? vel*Math.PI*Math.pow(diam/100/2,2) : 0)
+    : (vel>0&&larg>0&&alt>0 ? vel*(larg/100)*(alt/100) : 0);
+  const caudal_m3h = caudal_m3s>0 ? Math.round(caudal_m3s*3600) : null;
   const tsaida = m.tsaida!==undefined&&m.tsaida!=='' ? parseFloat(m.tsaida) : NaN;
   const tentrada = m.tentrada!==undefined&&m.tentrada!=='' ? parseFloat(m.tentrada) : NaN;
   const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? +(tentrada-tsaida).toFixed(1) : null;
-  const pterm = (caudal_m3s&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
+  const pterm = (caudal_m3s>0&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
   const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const V = isMono ? 230 : 400;
-  const pelec = (corrente&&fp) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
+  const pelec = (corrente>0&&fp>0) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
   const efic = (pterm&&pelec&&pelec>0) ? +(pterm/pelec).toFixed(2) : null;
 
   const computedRow = (id,label,val,unit) => (val!==null&&val!==undefined) ? `<div class="measure-row" style="background:var(--accent-dim);border-radius:var(--rsm);margin:2px 0">
@@ -895,14 +897,14 @@ window.setMeasure = (type, key, mk, val) => {
   const isCircular = (m.conduta||'Retangular') === 'Circular';
   const isMono = (m.motor||'Trifásico 400V') === 'Monofásico 230V';
   const vel=parseFloat(m.vel)||0, larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0, diam=parseFloat(m.diam)||0;
-  const caudal_m3s = isCircular ? (vel&&diam?vel*Math.PI*Math.pow(diam/100/2,2):0) : (vel&&larg&&alt?vel*(larg/100)*(alt/100):0);
-  const caudal_m3h = caudal_m3s ? Math.round(caudal_m3s*3600) : null;
+  const caudal_m3s = isCircular ? (vel>0&&diam>0?vel*Math.PI*Math.pow(diam/100/2,2):0) : (vel>0&&larg>0&&alt>0?vel*(larg/100)*(alt/100):0);
+  const caudal_m3h = caudal_m3s>0 ? Math.round(caudal_m3s*3600) : null;
   const tsaida=parseFloat(m.tsaida), tentrada=parseFloat(m.tentrada);
   const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? tentrada-tsaida : null;
-  const pterm = (caudal_m3s&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
+  const pterm = (caudal_m3s>0&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
   const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const V=isMono?230:400;
-  const pelec = (corrente&&fp) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
+  const pelec = (corrente>0&&fp>0) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
   const efic = (pterm&&pelec&&pelec>0) ? +(pterm/pelec).toFixed(2) : null;
   const upd = (id,val,unit) => { const el=document.getElementById(id+'_'+key); if(el&&val!==null) el.textContent=val+(unit?' '+unit:''); };
   upd('caudal', caudal_m3h, 'm³/h');
@@ -1204,6 +1206,13 @@ function updatePowerTotal() {
 }
 
 // ── NAV ───────────────────────────────────────────────────────────────────────
+window.deleteSession = async (id, name) => {
+  if(!confirm(`Apagar "${name}"? Esta acção não pode ser desfeita.`)) return;
+  await set(ref(db, `users/${currentUser.uid}/sessions/${id}`), null);
+  showToast('Inspeção apagada','ok');
+  loadSessions();
+};
+
 window.goBack = () => { currentSessionId=null; currentSession=null; if(dbListener){dbListener();dbListener=null;} loadSessions(); };
 window.showPage = id => { document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0,0); };
 
