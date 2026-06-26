@@ -197,7 +197,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v1.9</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.0</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -318,11 +318,16 @@ const UTA_CHECKS = [
 ];
 const UTA_MEASURES = [
   {k:'conduta',l:'Formato da conduta',u:'',type:'select',opts:['Retangular','Circular']},
-  {k:'vel',l:'Velocidade ar',u:'m/s'},{k:'larg',l:'Largura conduta',u:'cm'},
-  {k:'alt',l:'Altura conduta',u:'cm'},{k:'diam',l:'Diâmetro conduta',u:'cm'},
-  {k:'tconduta',l:'Temp. conduta',u:'°C'},
-  {k:'tambiente',l:'Temp. ambiente',u:'°C'},{k:'tgtc',l:'Temp. GTC',u:'°C'},
-  {k:'pelec',l:'Potência elétrica',u:'kW'},{k:'fp',l:'Fator de potência',u:'—'},
+  {k:'vel',l:'Velocidade ar',u:'m/s'},
+  {k:'larg',l:'Largura conduta',u:'cm'},
+  {k:'alt',l:'Altura conduta',u:'cm'},
+  {k:'diam',l:'Diâmetro conduta',u:'cm'},
+  {k:'tsaida',l:'Temp. saída (insuflação)',u:'°C'},
+  {k:'tentrada',l:'Temp. entrada (retorno)',u:'°C'},
+  {k:'tgtc',l:'Temp. lida na GTC',u:'°C'},
+  {k:'motor',l:'Tipo de motor',u:'',type:'select',opts:['Trifásico 400V','Monofásico 230V']},
+  {k:'corrente',l:'Corrente (I)',u:'A'},
+  {k:'fp',l:'Fator de potência (FP)',u:'—'},
 ];
 const CHILLER_CHECKS = [{sec:'Chiller',icon:'❄️',items:[{k:'ch1',l:'Funcionamento da unidade'},{k:'ch2',l:'Ruídos / vibrações anormais'},{k:'ch3',l:'Limpeza / higienização condensador'},{k:'ch4',l:'Pinturas e corrosão'},{k:'ch5',l:'Estanquidade circuito refrigerante'},{k:'ch6',l:'Estanquidade circuito hidráulico'},{k:'ch7',l:'Estado geral cablagem elétrica'}]}];
 const BOMBA_CHECKS = [{sec:'Bomba',icon:'💧',items:[{k:'bp1',l:'Estado de limpeza'},{k:'bp2',l:'Ruídos / vibrações anormais'},{k:'bp3',l:'Estanquidade — bomba, tubagem, válvulas'},{k:'bp4',l:'Termómetros e manómetros'},{k:'bp5',l:'Pintura e sinalização'}]}];
@@ -701,25 +706,40 @@ function checksHTML(e, secs, type, key) {
 
 function measuresHTML(e, fields, type, key) {
   const m=e.measures||{};
-  const vel=parseFloat(m.vel)||0,larg=parseFloat(m.larg)||0,alt=parseFloat(m.alt)||0;
-  const caudal=vel&&larg&&alt?Math.round(vel*(larg/100)*(alt/100)*3600):null;
-  const pelec=parseFloat(m.pelec)||0;
-  const ptherm=e.nominal?.potencia_termica_kw||null;
-  const eer=ptherm&&pelec?(ptherm/pelec).toFixed(2):null;
-  const dtc=m.tconduta&&m.tambiente?(parseFloat(m.tambiente)-parseFloat(m.tconduta)).toFixed(1):null;
   const sid=`s_${key}_med`;
   const isCircular = (m.conduta||'Retangular') === 'Circular';
+  const isMono = (m.motor||'Trifásico 400V') === 'Monofásico 230V';
+
+  // Pre-calculate all derived values
+  const vel=parseFloat(m.vel)||0;
+  const larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0, diam=parseFloat(m.diam)||0;
+  const caudal_m3s = isCircular
+    ? (vel&&diam ? vel*Math.PI*Math.pow(diam/100/2,2) : 0)
+    : (vel&&larg&&alt ? vel*(larg/100)*(alt/100) : 0);
+  const caudal_m3h = caudal_m3s ? Math.round(caudal_m3s*3600) : null;
+  const tsaida=parseFloat(m.tsaida), tentrada=parseFloat(m.tentrada);
+  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? (tentrada-tsaida) : null;
+  const pterm = (caudal_m3s&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT).toFixed(2) : null;
+  const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
+  const V = isMono ? 230 : 400;
+  const pelec = (corrente&&fp) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
+  const efic = (pterm&&pelec&&pelec>0) ? +(pterm/pelec).toFixed(2) : null;
+
+  const computedRow = (id,label,val,unit) => val!==null&&val!==undefined ? `<div class="measure-row" style="background:var(--accent-dim);border-radius:var(--rsm);margin:2px 0">
+    <span class="measure-label" style="color:var(--accent);font-weight:600">${label}</span>
+    <span class="measure-computed" id="${id}_${key}">${val} ${unit}</span>
+  </div>` : '';
+
   const rows=fields.map(f=>{
-    // Hide larg/alt for circular, hide diam for rectangular
     if(f.k==='larg'&&isCircular) return '';
     if(f.k==='alt'&&isCircular) return '';
     if(f.k==='diam'&&!isCircular) return '';
-    // Select field for conduta type
     if(f.type==='select') {
+      const defVal = f.k==='conduta'?'Retangular':'Trifásico 400V';
       return `<div class="measure-row">
         <span class="measure-label">${f.l}</span>
-        <select style="padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;outline:none;text-align:right" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
-          ${f.opts.map(o=>`<option value="${o}" ${(m[f.k]||'Retangular')===o?'selected':''}>${o}</option>`).join('')}
+        <select style="padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;outline:none" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
+          ${f.opts.map(o=>`<option value="${o}" ${(m[f.k]||defVal)===o?'selected':''}>${o}</option>`).join('')}
         </select>
         <span class="measure-unit"></span>
       </div>`;
@@ -729,36 +749,31 @@ function measuresHTML(e, fields, type, key) {
       <input class="measure-input" type="text" inputmode="decimal" value="${m[f.k]||''}" placeholder="0.0" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
       <span class="measure-unit">${f.u}</span>
     </div>`;
-    // Insert caudal row after last dimension field
+    // After last dimension → caudal
     if((f.k==='alt'&&!isCircular)||(f.k==='diam'&&isCircular)) {
-      const vel=parseFloat(m.vel)||0;
-      let caudal = null;
-      if(isCircular) {
-        const d=parseFloat(m.diam)||0;
-        caudal = vel&&d ? Math.round(vel*Math.PI*Math.pow(d/100/2,2)*3600) : null;
-      } else {
-        const larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0;
-        caudal = vel&&larg&&alt ? Math.round(vel*(larg/100)*(alt/100)*3600) : null;
-      }
-      const cRow = `<div class="measure-row" style="background:var(--accent-dim);border-radius:var(--rsm);margin:2px 0">
-        <span class="measure-label" style="color:var(--accent);font-weight:600">Caudal calc.</span>
-        <span class="measure-computed" id="caudal_${key}">${caudal ? caudal+' m³/h' : '—'}</span>
-      </div>`;
-      return row + cRow;
+      return row + computedRow('caudal','Caudal calc.',caudal_m3h,'m³/h');
+    }
+    // After temp entrada → ΔT + potência térmica
+    if(f.k==='tentrada') {
+      return row
+        + (deltaT!==null ? computedRow('dt','ΔT (entrada−saída)',deltaT.toFixed(1),'°C') : '')
+        + computedRow('pterm','Pot. térmica',pterm,'kW');
+    }
+    // After FP → potência elétrica + eficiência
+    if(f.k==='fp') {
+      return row
+        + computedRow('pelec','Pot. elétrica calc.',pelec,'kW')
+        + computedRow('efic','Eficiência (Pt/Pe)',efic,'');
     }
     return row;
   }).join('');
-  const comp=[
-    caudal?`<div class="measure-row"><span class="measure-label">Caudal calculado</span><span class="measure-computed">${caudal} m³/h</span></div>`:'',
-    eer?`<div class="measure-row"><span class="measure-label">EER real</span><span class="measure-computed">${eer}</span></div>`:'',
-    dtc?`<div class="measure-row"><span class="measure-label">ΔT conduta</span><span class="measure-computed">${dtc} °C</span></div>`:'',
-  ].join('');
+  const comp='';
   return `<div class="section-block">
     <div class="section-hdr" onclick="toggleSec('${sid}')">
       <div class="section-hdr-left"><div class="section-icon">📐</div><div class="section-title">Medições em campo</div></div>
       <span class="chevron" id="chev_${sid}">▾</span>
     </div>
-    <div class="section-body" id="${sid}">${rows}${comp}</div>
+    <div class="section-body" id="${sid}">${rows}</div>
   </div>`;
 }
 
@@ -869,24 +884,28 @@ window.setMeasure = (type, key, mk, val) => {
   if(!currentSession[arr][key].measures) currentSession[arr][key].measures={};
   currentSession[arr][key].measures[mk]=val;
   scheduleSave(dbPath(`${arr}/${key}/measures/${mk}`), val);
-  // Update caudal display live
-  if(['vel','larg','alt','diam','conduta'].includes(mk)) {
-    const m = currentSession[arr][key].measures;
-    const isCircular = (m.conduta||'Retangular') === 'Circular';
-    const v=parseFloat(m.vel)||0;
-    let caudal = null;
-    if(isCircular) {
-      const d=parseFloat(m.diam)||0;
-      caudal = v&&d ? Math.round(v*Math.PI*Math.pow(d/100/2,2)*3600) : null;
-    } else {
-      const l=parseFloat(m.larg)||0, a=parseFloat(m.alt)||0;
-      caudal = v&&l&&a ? Math.round(v*(l/100)*(a/100)*3600) : null;
-    }
-    const el = document.getElementById('caudal_'+key);
-    if(el) el.textContent = caudal ? caudal+' m³/h' : '—';
-    // Re-render measures if conduta type changed (to show/hide fields)
-    if(mk==='conduta') renderInspection();
-  }
+  // Re-render if select changed (show/hide fields)
+  if(mk==='conduta'||mk==='motor') { renderInspection(); return; }
+  // Live update computed fields
+  const m = currentSession[arr][key].measures;
+  const isCircular = (m.conduta||'Retangular') === 'Circular';
+  const isMono = (m.motor||'Trifásico 400V') === 'Monofásico 230V';
+  const vel=parseFloat(m.vel)||0, larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0, diam=parseFloat(m.diam)||0;
+  const caudal_m3s = isCircular ? (vel&&diam?vel*Math.PI*Math.pow(diam/100/2,2):0) : (vel&&larg&&alt?vel*(larg/100)*(alt/100):0);
+  const caudal_m3h = caudal_m3s ? Math.round(caudal_m3s*3600) : null;
+  const tsaida=parseFloat(m.tsaida), tentrada=parseFloat(m.tentrada);
+  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? tentrada-tsaida : null;
+  const pterm = (caudal_m3s&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT).toFixed(2) : null;
+  const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
+  const V=isMono?230:400;
+  const pelec = (corrente&&fp) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
+  const efic = (pterm&&pelec&&pelec>0) ? +(pterm/pelec).toFixed(2) : null;
+  const upd = (id,val,unit) => { const el=document.getElementById(id+'_'+key); if(el&&val!==null) el.textContent=val+(unit?' '+unit:''); };
+  upd('caudal', caudal_m3h, 'm³/h');
+  upd('dt', deltaT!==null?deltaT.toFixed(1):null, '°C');
+  upd('pterm', pterm, 'kW');
+  upd('pelec', pelec, 'kW');
+  upd('efic', efic, '');
 };
 
 window.setNote = (type, key, val) => {
