@@ -197,7 +197,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.4</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.5</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -727,6 +727,9 @@ function measuresHTML(e, fields, type, key) {
   const V = isMono ? 230 : 400;
   const pelec = (corrente>0&&fp>0) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
   const efic = (pterm&&pelec&&pelec>0) ? +(pterm/pelec).toFixed(2) : null;
+  const pterm_nom = parseFloat(e.pterm_nom)||null;
+  const pelec_nom = parseFloat(e.pelec_nom)||null;
+  const efic_nom = (pterm_nom&&pelec_nom&&pelec_nom>0) ? +(pterm_nom/pelec_nom).toFixed(2) : null;
 
   const computedRow = (id,label,val,unit) => (val!==null&&val!==undefined) ? `<div class="measure-row" style="background:var(--accent-dim);border-radius:var(--rsm);margin:2px 0">
     <span class="measure-label" style="color:var(--accent);font-weight:600">${label}</span>
@@ -769,7 +772,8 @@ function measuresHTML(e, fields, type, key) {
     if(f.k==='fp') {
       return row
         + computedRow('pelec','Pot. elétrica calc.',pelec,'kW')
-        + computedRow('efic','Eficiência (Pt/Pe)',efic,'');
+        + computedRow('efic','Eficiência real (Pt/Pe)',efic,'')
+        + (efic_nom!==null ? computedRow('efic_nom','Eficiência nominal',efic_nom,'') : '');
     }
     return row;
   }).join('');
@@ -906,6 +910,9 @@ window.setMeasure = (type, key, mk, val) => {
   const V=isMono?230:400;
   const pelec = (corrente>0&&fp>0) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
   const efic = (pterm&&pelec&&pelec>0) ? +(pterm/pelec).toFixed(2) : null;
+  const pterm_nom = parseFloat(e.pterm_nom)||null;
+  const pelec_nom = parseFloat(e.pelec_nom)||null;
+  const efic_nom = (pterm_nom&&pelec_nom&&pelec_nom>0) ? +(pterm_nom/pelec_nom).toFixed(2) : null;
   const upd = (id,val,unit) => { const el=document.getElementById(id+'_'+key); if(el&&val!==null) el.textContent=val+(unit?' '+unit:''); };
   upd('caudal', caudal_m3h, 'm³/h');
   upd('dt', deltaT!==null?deltaT.toFixed(1):null, '°C');
@@ -948,8 +955,19 @@ Se não souberes, usa null. Não inventes.`;
     const parsed=JSON.parse(txt.replace(/```json|```/g,'').trim());
     currentSession[arr][key].nominal=parsed;
     scheduleSave(dbPath(`${arr}/${key}/nominal`), parsed);
+    // Auto-fill pterm_nom and pelec_nom if not already set
+    if(parsed.potencia_termica_kw && !currentSession[arr][key].pterm_nom) {
+      currentSession[arr][key].pterm_nom = parsed.potencia_termica_kw;
+      scheduleSave(dbPath(`${arr}/${key}/pterm_nom`), parsed.potencia_termica_kw);
+    }
+    if(parsed.potencia_eletrica_kw && !currentSession[arr][key].pelec_nom) {
+      currentSession[arr][key].pelec_nom = parsed.potencia_eletrica_kw;
+      scheduleSave(dbPath(`${arr}/${key}/pelec_nom`), parsed.potencia_eletrica_kw);
+    }
     const area=document.getElementById('nomArea_'+key);
     if(area) area.innerHTML=nominalHTML(currentSession[arr][key]);
+    // Re-render to show updated fields
+    renderInspection();
     showToast('Dados nominais carregados','ok');
   } catch(err){ showToast('Não foi possível obter dados nominais','err'); }
   finally{ btn.textContent='✨ Dados nominais (IA)'; btn.disabled=false; }
