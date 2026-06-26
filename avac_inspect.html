@@ -197,7 +197,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.1</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v2.2</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -720,7 +720,7 @@ function measuresHTML(e, fields, type, key) {
   const tsaida = m.tsaida!==undefined&&m.tsaida!=='' ? parseFloat(m.tsaida) : NaN;
   const tentrada = m.tentrada!==undefined&&m.tentrada!=='' ? parseFloat(m.tentrada) : NaN;
   const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? +(tentrada-tsaida).toFixed(1) : null;
-  const pterm = (caudal_m3s&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT).toFixed(2) : null;
+  const pterm = (caudal_m3s&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
   const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const V = isMono ? 230 : 400;
   const pelec = (corrente&&fp) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
@@ -761,7 +761,7 @@ function measuresHTML(e, fields, type, key) {
     if(f.k==='tentrada') {
       return row
         + (deltaT!==null ? computedRow('dt','ΔT (entrada−saída)',deltaT.toFixed(1),'°C') : '')
-        + computedRow('pterm','Pot. térmica',pterm,'kW');
+        + computedRow('pterm','Pot. térmica (ar húmido)',pterm,'kW');
     }
     // After FP → potência elétrica + eficiência
     if(f.k==='fp') {
@@ -899,7 +899,7 @@ window.setMeasure = (type, key, mk, val) => {
   const caudal_m3h = caudal_m3s ? Math.round(caudal_m3s*3600) : null;
   const tsaida=parseFloat(m.tsaida), tentrada=parseFloat(m.tentrada);
   const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? tentrada-tsaida : null;
-  const pterm = (caudal_m3s&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT).toFixed(2) : null;
+  const pterm = (caudal_m3s&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
   const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const V=isMono?230:400;
   const pelec = (corrente&&fp) ? +((isMono?1:Math.sqrt(3))*V*corrente*fp/1000).toFixed(2) : null;
