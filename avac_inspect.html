@@ -647,10 +647,10 @@ function eqMetaHTML(e, type, key) {
       <div><div class="eq-meta-label">Modelo</div><input type="text" value="${e.modelo||''}" placeholder="ex: FAH100" onblur="setMeta('${type}','${key}','modelo',this.value)"></div>
     </div>
     <div class="eq-meta-grid">
-      <div><div class="eq-meta-label">Nº série</div><input type="text" value="${e.serie||''}" placeholder="opcional" onblur="setMeta('${type}','${key}','serie',this.value)"></div>
-      <div><div class="eq-meta-label">Ano inst.</div><input type="text" value="${e.ano||''}" placeholder="ex: 2019" onblur="setMeta('${type}','${key}','ano',this.value)"></div>
+      <div><div class="eq-meta-label">Pot. térmica nom. (kW)</div><input type="text" inputmode="decimal" value="${e.pterm_nom||''}" placeholder="ex: 15.5" onblur="setMeta('${type}','${key}','pterm_nom',this.value)"></div>
+      <div><div class="eq-meta-label">Pot. elétrica nom. (kW)</div><input type="text" inputmode="decimal" value="${e.pelec_nom||''}" placeholder="ex: 4.2" onblur="setMeta('${type}','${key}','pelec_nom',this.value)"></div>
     </div>
-    <button class="ai-btn" ${!hasData?'disabled':''} id="aiBtn_${key}" onclick="lookupNominal('${type}','${key}')">✨ Dados nominais (IA)</button>
+    <button class="ai-btn" ${!hasData?'disabled':''} id="aiBtn_${key}" onclick="lookupNominal('${type}','${key}')">✨ Pesquisar dados nominais (IA)</button>
     <div id="nomArea_${key}">${e.nominal ? nominalHTML(e) : ''}</div>
   </div>`;
 }
