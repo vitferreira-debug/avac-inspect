@@ -198,7 +198,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v3.7</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v3.8</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -314,7 +314,7 @@ const UTA_CHECKS = [
   {sec:'Filtros',icon:'🔲',items:[{k:'f1',l:'Pré-filtro — limpeza / higienização'}]},
   {sec:'Baterias',icon:'⬛',items:[{k:'b1',l:'Bateria — limpeza / higienização'},{k:'b2',l:'Tabuleiro condensados e drenagens'},{k:'b3',l:'Estanquidade das baterias'}]},
   {sec:'Ventilador',icon:'🔄',items:[{k:'v1',l:'Funcionamento da unidade'},{k:'v2',l:'Aparelhagem de comando e proteção'},{k:'v3',l:'Ruídos / vibrações anormais'},{k:'v4',l:'Tensão e estado das correias'},{k:'v5',l:'Estado da junção motor-ventilador'}]},
-  {sec:'Temperatura',icon:'🌡',items:[{k:'t1',l:'Desvio temp. ambiente vs GTC ≤ 1°C'}]},
+
 ];
 const UTA_MEASURES = [
   {k:'conduta',l:'Formato da conduta',u:'',type:'select',opts:['Retangular','Circular']},
@@ -324,7 +324,6 @@ const UTA_MEASURES = [
   {k:'diam',l:'Diâmetro conduta',u:'cm'},
   {k:'tsaida',l:'Temp. saída (insuflação)',u:'°C'},
   {k:'tentrada',l:'Temp. entrada (retorno)',u:'°C'},
-  {k:'tgtc',l:'Temp. lida na GTC',u:'°C'},
   {k:'motor',l:'Tipo de motor',u:'',type:'select',opts:['Trifásico 400V','Monofásico 230V']},
   {k:'corrente',l:'Corrente (I)',u:'A'},
   {k:'fp',l:'Fator de potência (FP)',u:'—'},
@@ -1420,7 +1419,7 @@ window.exportDOCX = async () => {
     columnWidths:[CONTENT_W],
     rows:[new TableRow({children:[
       cell([par([txt('RELATÓRIO DE INSPEÇÃO AVAC',{bold:true,size:28,color:'FFFFFF'})],{align:AlignmentType.CENTER})],
-        {borders:noBorder,fill:'1a3a5c',width:CONTENT_W}),
+        {borders:noBorder,fill:'4D4D4D',width:CONTENT_W}),
     ]})]
   }));
 
@@ -1432,31 +1431,31 @@ window.exportDOCX = async () => {
     columnWidths:[2500,CONTENT_W-2500],
     rows:[
       new TableRow({children:[
-        cell([par([txt('Nº Relatório',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt('Nº Relatório',{bold:true,size:18})])],{fill:'F2F2F2',width:2500}),
         cell([par([txt('___________________',{size:18})])],{width:CONTENT_W-2500}),
       ]}),
       new TableRow({children:[
-        cell([par([txt('Instalação / Loja',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt('Instalação / Loja',{bold:true,size:18})])],{fill:'F2F2F2',width:2500}),
         cell([par([txt(s.meta?.loja||'—',{size:18})])],{width:CONTENT_W-2500}),
       ]}),
       ...(s.meta?.localizacao ? [new TableRow({children:[
-        cell([par([txt('Localização',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt('Localização',{bold:true,size:18})])],{fill:'F2F2F2',width:2500}),
         cell([par([txt(s.meta.localizacao,{size:18})])],{width:CONTENT_W-2500}),
       ]})] : []),
       new TableRow({children:[
-        cell([par([txt('Data da inspeção',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt('Data da inspeção',{bold:true,size:18})])],{fill:'F2F2F2',width:2500}),
         cell([par([txt(s.meta?.data||'—',{size:18})])],{width:CONTENT_W-2500}),
       ]}),
       new TableRow({children:[
-        cell([par([txt('Auditor',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt('Auditor',{bold:true,size:18})])],{fill:'F2F2F2',width:2500}),
         cell([par([txt(auditor,{size:18})])],{width:CONTENT_W-2500}),
       ]}),
       new TableRow({children:[
-        cell([par([txt('Resultado Global',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt('Resultado Global',{bold:true,size:18})])],{fill:'F2F2F2',width:2500}),
         cell([par([txt(pct+'% ('+ok+'/'+tot+' pontos)',{bold:true,size:18,color:scoreColor})])],{width:CONTENT_W-2500}),
       ]}),
       ...(s.meta?.problematicas ? [new TableRow({children:[
-        cell([par([txt('Problemáticas',{bold:true,size:18})])],{fill:'E8EEF4',width:2500}),
+        cell([par([txt('Problemáticas',{bold:true,size:18})])],{fill:'F2F2F2',width:2500}),
         cell([par([txt(s.meta.problematicas,{size:18})])],{width:CONTENT_W-2500}),
       ]})] : []),
     ]
@@ -1482,7 +1481,7 @@ window.exportDOCX = async () => {
   }
 
   // Equipment details
-  children.push(par([txt('DETALHE POR EQUIPAMENTO',{bold:true,size:22,color:'1a3a5c'})],{before:160,after:80}));
+  children.push(par([txt('DETALHE POR EQUIPAMENTO',{bold:true,size:22,color:'4D4D4D'})],{before:160,after:80}));
 
   const renderEqSection = async (eqMap, secChecks, label) => {
     const list = Object.values(eqMap||{});
@@ -1494,19 +1493,29 @@ window.exportDOCX = async () => {
         width:{size:CONTENT_W,type:WidthType.DXA},
         columnWidths:[CONTENT_W],
         rows:[new TableRow({children:[
-          cell([par([txt((e.nome||e.name||'')+(e.marca?' — '+e.marca+(e.modelo?' '+e.modelo:''):''),{bold:true,size:20,color:'FFFFFF'})],{align:AlignmentType.LEFT})],
-            {borders:noBorder,fill:'2B579A',width:CONTENT_W}),
+          cell([par([txt(e.nome||e.name||'',{bold:true,size:22,color:'FFFFFF'})],{align:AlignmentType.LEFT})],
+            {borders:noBorder,fill:'4D4D4D',width:CONTENT_W}),
         ]})]
       }));
 
+      // Marca/modelo subtitle
+      if(e.marca||e.modelo) {
+        children.push(new Table({
+          width:{size:CONTENT_W,type:WidthType.DXA},
+          columnWidths:[CONTENT_W],
+          rows:[new TableRow({children:[
+            cell([par([txt((e.marca||'')+(e.modelo?' '+e.modelo:''),{size:18,color:'666666'})])],{borders:noBorder,fill:'F7F7F7',width:CONTENT_W}),
+          ]})]
+        }));
+      }
       // Nominal data row if available
       if(e.pterm_nom||e.pelec_nom) {
         children.push(new Table({
           width:{size:CONTENT_W,type:WidthType.DXA},
           columnWidths:[CONTENT_W/2,CONTENT_W/2],
           rows:[new TableRow({children:[
-            cell([par([txt('Pot. térmica nom.: '+(e.pterm_nom||'—')+' kW',{size:18})])],{fill:'EEF4FB',width:CONTENT_W/2}),
-            cell([par([txt('Pot. elétrica nom.: '+(e.pelec_nom||'—')+' kW',{size:18})])],{fill:'EEF4FB',width:CONTENT_W/2}),
+            cell([par([txt('Pot. térmica nom.: '+(e.pterm_nom||'—')+' kW',{size:18})])],{fill:'F2F2F2',width:CONTENT_W/2}),
+            cell([par([txt('Pot. elétrica nom.: '+(e.pelec_nom||'—')+' kW',{size:18})])],{fill:'F2F2F2',width:CONTENT_W/2}),
           ]})]
         }));
       }
@@ -1531,15 +1540,12 @@ window.exportDOCX = async () => {
       // Measurements
       const m = e.measures||{};
       const measRows = [];
-      if(m.vel) measRows.push(['Velocidade ar', m.vel+' m/s']);
-      if(m.larg) measRows.push(['Largura conduta', m.larg+' cm']);
-      if(m.alt) measRows.push(['Altura conduta', m.alt+' cm']);
-      if(m.diam) measRows.push(['Diâmetro conduta', m.diam+' cm']);
+      // Only show temperatures, electrical and results - no raw dimensions
       if(m.tsaida) measRows.push(['Temp. saída (insuflação)', m.tsaida+' °C']);
       if(m.tentrada) measRows.push(['Temp. entrada (retorno)', m.tentrada+' °C']);
-      if(m.tgtc) measRows.push(['Temp. lida na GTC', m.tgtc+' °C']);
       if(m.corrente) measRows.push(['Corrente (I)', m.corrente+' A']);
       if(m.fp) measRows.push(['Fator de potência', m.fp]);
+      if(m.motor&&m.motor!=='Trifásico 400V') measRows.push(['Tipo de motor', m.motor]);
       // Computed
       const vel=parseFloat(m.vel)||0, larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0, diam=parseFloat(m.diam)||0;
       const isCirc=(m.conduta||'Retangular')==='Circular';
@@ -1566,7 +1572,7 @@ window.exportDOCX = async () => {
           width:{size:CONTENT_W,type:WidthType.DXA},
           columnWidths:[Math.round(CONTENT_W*0.6),Math.round(CONTENT_W*0.4)],
           rows: measRows.map(([label,val])=>new TableRow({children:[
-            cell([par([txt(label,{size:18})])],{fill:'F5F8FB',width:Math.round(CONTENT_W*0.6)}),
+            cell([par([txt(label,{size:18})])],{fill:'F2F2F2',width:Math.round(CONTENT_W*0.6)}),
             cell([par([txt(val,{bold:true,size:18})])],{width:Math.round(CONTENT_W*0.4)}),
           ]}))
         }));
@@ -1579,6 +1585,8 @@ window.exportDOCX = async () => {
       });
       if(allPhotos.length) {
         children.push(par([txt('Fotografias',{bold:true,size:18,color:'444444'})],{before:80,after:40}));
+        // Build image runs array for 2x2 layout
+        const imgRuns = [];
         for(const ph of allPhotos) {
           try {
             const base64 = ph.src.split(',')[1];
@@ -1586,9 +1594,29 @@ window.exportDOCX = async () => {
             const byteStr = atob(base64);
             const arr = new Uint8Array(byteStr.length);
             for(let i=0;i<byteStr.length;i++) arr[i]=byteStr.charCodeAt(i);
-            children.push(par([txt(ph.label,{size:16,color:'666666'})],{before:40,after:20}));
-            children.push(par([new ImageRun({data:arr,transformation:{width:300,height:200},type:imgType})]));
-          } catch(e2) { /* skip broken image */ }
+            imgRuns.push({label:ph.label, data:arr, type:imgType});
+          } catch(e2) {}
+        }
+        // Render 2 per row using table
+        for(let i=0;i<imgRuns.length;i+=2) {
+          const r1=imgRuns[i], r2=imgRuns[i+1]||null;
+          const colW = Math.round(CONTENT_W/2)-60;
+          children.push(new Table({
+            width:{size:CONTENT_W,type:WidthType.DXA},
+            columnWidths:[colW+60, r2?colW:0],
+            rows:[
+              // Label row
+              new TableRow({children:[
+                cell([par([txt(r1.label,{size:15,color:'666666'})])],{borders:noBorder,width:colW+60}),
+                ...(r2?[cell([par([txt(r2.label,{size:15,color:'666666'})])],{borders:noBorder,width:colW})]:[]),
+              ]}),
+              // Image row
+              new TableRow({children:[
+                cell([par([new ImageRun({data:r1.data,transformation:{width:colW/15,height:Math.round(colW/15*0.67)},type:r1.type})])],{borders:noBorder,width:colW+60}),
+                ...(r2?[cell([par([new ImageRun({data:r2.data,transformation:{width:colW/15,height:Math.round(colW/15*0.67)},type:r2.type})])],{borders:noBorder,width:colW})]:[]),
+              ]}),
+            ]
+          }));
         }
       }
 
@@ -1622,16 +1650,16 @@ window.exportDOCX = async () => {
   // Power section
   const pwTotal = POWER_FIELDS.reduce((a,f)=>a+(parseFloat((s.power||{})[f.k])||0),0);
   if(pwTotal>0) {
-    children.push(par([txt('CONSUMO ELÉTRICO',{bold:true,size:22,color:'1a3a5c'})],{before:160,after:80}));
+    children.push(par([txt('CONSUMO ELÉTRICO',{bold:true,size:22,color:'4D4D4D'})],{before:160,after:80}));
     const pwRows = POWER_FIELDS.filter(f=>(s.power||{})[f.k]).map(f=>
       new TableRow({children:[
-        cell([par([txt(f.l,{size:18})])],{fill:'F5F8FB',width:Math.round(CONTENT_W*0.6)}),
+        cell([par([txt(f.l,{size:18})])],{fill:'F2F2F2',width:Math.round(CONTENT_W*0.6)}),
         cell([par([txt(parseFloat(s.power[f.k]).toFixed(1)+' kW',{bold:true,size:18})])],{width:Math.round(CONTENT_W*0.4)}),
       ]})
     );
     pwRows.push(new TableRow({children:[
-      cell([par([txt('TOTAL',{bold:true,size:18})])],{fill:'E8EEF4',width:Math.round(CONTENT_W*0.6)}),
-      cell([par([txt(pwTotal.toFixed(1)+' kW',{bold:true,size:18,color:'1a3a5c'})])],{fill:'E8EEF4',width:Math.round(CONTENT_W*0.4)}),
+      cell([par([txt('TOTAL',{bold:true,size:18})])],{fill:'F2F2F2',width:Math.round(CONTENT_W*0.6)}),
+      cell([par([txt(pwTotal.toFixed(1)+' kW',{bold:true,size:18,color:'4D4D4D'})])],{fill:'F2F2F2',width:Math.round(CONTENT_W*0.4)}),
     ]}));
     children.push(new Table({width:{size:CONTENT_W,type:WidthType.DXA},columnWidths:[Math.round(CONTENT_W*0.6),Math.round(CONTENT_W*0.4)],rows:pwRows}));
   }
