@@ -198,7 +198,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v3.8</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v3.9</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -676,9 +676,12 @@ function stripHTML(list, activeI, type, label) {
 
 function eqMetaHTML(e, type, key) {
   const hasData = e.marca && e.modelo;
-  const photoThumb = e.photo_geral ? `<div style="margin-top:8px;position:relative;display:inline-block">
-    <img src="${e.photo_geral}" style="width:100%;max-height:160px;object-fit:cover;border-radius:var(--rsm);border:1px solid var(--border)" onclick="viewGeneralPhoto('${type}','${key}')">
-    <button onclick="removeGeneralPhoto('${type}','${key}')" style="position:absolute;top:4px;right:4px;background:var(--nok-bg);border:1px solid var(--nok-border);color:var(--nok);border-radius:4px;padding:2px 6px;font-size:11px;cursor:pointer">✕</button>
+  const photos_geral = Array.isArray(e.photos_geral) ? e.photos_geral : (e.photo_geral ? [e.photo_geral] : []);
+  const photoThumb = photos_geral.length > 0 ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+    ${photos_geral.map((src,pi)=>`<div style="position:relative">
+      <img src="${src}" style="width:100%;height:90px;object-fit:cover;border-radius:var(--rsm);border:1px solid var(--border);cursor:pointer" onclick="viewGeneralPhoto('${type}','${key}',${pi})">
+      <button onclick="removeGeneralPhoto('${type}','${key}',${pi})" style="position:absolute;top:3px;right:3px;background:var(--nok-bg);border:1px solid var(--nok-border);color:var(--nok);border-radius:4px;padding:1px 5px;font-size:11px;cursor:pointer;line-height:1.4">✕</button>
+    </div>`).join('')}
   </div>` : '';
   return `<div class="eq-meta">
     <div class="field-wrap" style="margin-bottom:8px">
@@ -695,8 +698,11 @@ function eqMetaHTML(e, type, key) {
     </div>
     <div style="display:flex;gap:6px;margin-top:4px">
       <button class="ai-btn" style="flex:1" ${!hasData?'disabled':''} id="aiBtn_${key}" onclick="lookupNominal('${type}','${key}')">✨ Dados nominais (IA)</button>
-      <label style="cursor:pointer;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text2);font-size:13px;display:flex;align-items:center;gap:4px;white-space:nowrap">
-        📷 Foto geral<input type="file" accept="image/*" style="display:none" onchange="addGeneralPhoto('${type}','${key}',this)">
+      <label style="cursor:pointer;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text2);font-size:13px;display:flex;align-items:center;gap:4px;white-space:nowrap" title="Câmara">
+        📷<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addGeneralPhoto('${type}','${key}',this)">
+      </label>
+      <label style="cursor:pointer;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text2);font-size:13px;display:flex;align-items:center;gap:4px;white-space:nowrap" title="Galeria">
+        🖼<input type="file" accept="image/*" style="display:none" onchange="addGeneralPhoto('${type}','${key}',this)">
       </label>
     </div>
     ${photoThumb}
@@ -1168,7 +1174,7 @@ window.addGeneralPhoto = (type, key, input) => {
   const file = input.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = ev => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -1179,36 +1185,61 @@ window.addGeneralPhoto = (type, key, input) => {
       const compressed = canvas.toDataURL('image/jpeg', 0.75);
       const arr = typeToArr(type);
       if(!currentSession[arr]?.[key]) return;
-      currentSession[arr][key].photo_geral = compressed;
-      scheduleSave(dbPath(`${arr}/${key}/photo_geral`), compressed);
+      if(!Array.isArray(currentSession[arr][key].photos_geral)) {
+        // Migrate old single photo if exists
+        const old = currentSession[arr][key].photo_geral;
+        currentSession[arr][key].photos_geral = old ? [old] : [];
+        currentSession[arr][key].photo_geral = null;
+      }
+      currentSession[arr][key].photos_geral.push(compressed);
+      scheduleSave(dbPath(`${arr}/${key}/photos_geral`), currentSession[arr][key].photos_geral);
       renderInspection();
-      showToast('Foto geral adicionada','ok');
+      showToast('Foto adicionada','ok');
     };
-    img.src = e.target.result;
+    img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
   input.value='';
 };
 
-window.removeGeneralPhoto = (type, key) => {
-  if(!confirm('Remover foto geral?')) return;
+window.removeGeneralPhoto = (type, key, idx) => {
+  if(!confirm('Remover esta foto?')) return;
   const arr = typeToArr(type);
   if(!currentSession[arr]?.[key]) return;
-  currentSession[arr][key].photo_geral = null;
-  scheduleSave(dbPath(`${arr}/${key}/photo_geral`), null);
+  const photos = currentSession[arr][key].photos_geral || [];
+  photos.splice(idx, 1);
+  currentSession[arr][key].photos_geral = photos;
+  scheduleSave(dbPath(`${arr}/${key}/photos_geral`), photos);
   renderInspection();
 };
 
-window.viewGeneralPhoto = (type, key) => {
+window.viewGeneralPhoto = (type, key, idx) => {
   const arr = typeToArr(type);
-  const src = currentSession[arr]?.[key]?.photo_geral;
-  if(!src) return;
+  const photos = currentSession[arr]?.[key]?.photos_geral || [];
+  if(!photos[idx]) return;
   const overlay = document.createElement('div');
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:999;display:flex;align-items:center;justify-content:center';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px';
   overlay.onclick=()=>overlay.remove();
   const img = document.createElement('img');
-  img.src=src; img.style.cssText='max-width:95vw;max-height:90vh;object-fit:contain;border-radius:8px';
+  img.src=photos[idx];
+  img.style.cssText='max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px';
+  // Navigation if multiple
+  const nav = document.createElement('div');
+  nav.style.cssText='display:flex;gap:12px;align-items:center';
+  if(photos.length>1) {
+    const prev = document.createElement('button');
+    prev.textContent='◀'; prev.style.cssText='padding:8px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:16px';
+    prev.onclick=e=>{e.stopPropagation();const ni=(idx-1+photos.length)%photos.length;overlay.remove();viewGeneralPhoto(type,key,ni);};
+    const next = document.createElement('button');
+    next.textContent='▶'; next.style.cssText=prev.style.cssText;
+    next.onclick=e=>{e.stopPropagation();const ni=(idx+1)%photos.length;overlay.remove();viewGeneralPhoto(type,key,ni);};
+    const counter = document.createElement('span');
+    counter.textContent=`${idx+1} / ${photos.length}`;
+    counter.style.cssText='color:var(--text2);font-size:13px';
+    nav.appendChild(prev); nav.appendChild(counter); nav.appendChild(next);
+  }
   overlay.appendChild(img);
+  overlay.appendChild(nav);
   document.body.appendChild(overlay);
 };
 
@@ -1620,17 +1651,32 @@ window.exportDOCX = async () => {
         }
       }
 
-      // General photo
-      if(e.photo_geral) {
-        try {
-          const base64g = e.photo_geral.split(',')[1];
-          const imgTypeg = e.photo_geral.startsWith('data:image/png')?'png':'jpeg';
-          const byteStrg = atob(base64g);
-          const arrg = new Uint8Array(byteStrg.length);
-          for(let i=0;i<byteStrg.length;i++) arrg[i]=byteStrg.charCodeAt(i);
-          children.push(par([txt('Foto geral',{bold:true,size:18,color:'444444'})],{before:80,after:20}));
-          children.push(par([new ImageRun({data:arrg,transformation:{width:400,height:250},type:imgTypeg})]));
-        } catch(eg) {}
+      // General photos (array)
+      const generalPhotos = Array.isArray(e.photos_geral) ? e.photos_geral : (e.photo_geral ? [e.photo_geral] : []);
+      if(generalPhotos.length) {
+        children.push(par([txt('Fotos gerais do equipamento',{bold:true,size:18,color:'444444'})],{before:80,after:40}));
+        const gImgRuns = [];
+        for(const gsrc of generalPhotos) {
+          try {
+            const gb = gsrc.split(',')[1];
+            const gt = gsrc.startsWith('data:image/png')?'png':'jpeg';
+            const gbs = atob(gb); const ga = new Uint8Array(gbs.length);
+            for(let i=0;i<gbs.length;i++) ga[i]=gbs.charCodeAt(i);
+            gImgRuns.push({data:ga,type:gt});
+          } catch(eg) {}
+        }
+        const gColW = Math.round(CONTENT_W/2)-60;
+        for(let gi=0;gi<gImgRuns.length;gi+=2) {
+          const g1=gImgRuns[gi], g2=gImgRuns[gi+1]||null;
+          children.push(new Table({
+            width:{size:CONTENT_W,type:WidthType.DXA},
+            columnWidths:[gColW+60, g2?gColW:0],
+            rows:[new TableRow({children:[
+              cell([par([new ImageRun({data:g1.data,transformation:{width:Math.round(gColW/15),height:Math.round(gColW/15*0.67)},type:g1.type})])],{borders:noBorder,width:gColW+60}),
+              ...(g2?[cell([par([new ImageRun({data:g2.data,transformation:{width:Math.round(gColW/15),height:Math.round(gColW/15*0.67)},type:g2.type})])],{borders:noBorder,width:gColW})]:[]),
+            ]})]
+          }));
+        }
       }
       // Notes
       if(e.note) {
