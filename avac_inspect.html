@@ -1557,6 +1557,8 @@ window.exportDOCX = async () => {
   const WidthType = docxLib.WidthType;
   const ShadingType = docxLib.ShadingType;
   const VerticalAlign = docxLib.VerticalAlign;
+  const PageNumber = docxLib.PageNumber;
+  const Footer = docxLib.Footer;
   console.log('docx lib loaded:', Object.keys(docxLib).slice(0,10));
   const PAGE_W = 11906; // A4 width in DXA
   const MARGIN = 1134;  // ~2cm
@@ -1600,9 +1602,9 @@ window.exportDOCX = async () => {
     width:{size:CONTENT_W,type:WidthType.DXA},
     columnWidths:[Math.round(CONTENT_W*0.35),Math.round(CONTENT_W*0.3),Math.round(CONTENT_W*0.35)],
     rows:[new TableRow({children:[
-      cell([par([new ImageRun({data:sgsArr,transformation:{width:80,height:40},type:'png'})])],{borders:noBorder,width:Math.round(CONTENT_W*0.35)}),
-      cell([par([txt('')])],{borders:noBorder,width:Math.round(CONTENT_W*0.3)}),
-      cell([par([new ImageRun({data:inditexArr,transformation:{width:100,height:30},type:'png'})],{align:AlignmentType.RIGHT})],{borders:noBorder,width:Math.round(CONTENT_W*0.35)}),
+      cell([par([new ImageRun({data:sgsArr,transformation:{width:80,height:40},type:'png'})])],{borders:noBorder,fill:'FFFFFF',width:Math.round(CONTENT_W*0.35)}),
+      cell([par([txt('')])],{borders:noBorder,fill:'FFFFFF',width:Math.round(CONTENT_W*0.3)}),
+      cell([par([new ImageRun({data:inditexArr,transformation:{width:100,height:30},type:'png'})],{align:AlignmentType.RIGHT})],{borders:noBorder,fill:'FFFFFF',width:Math.round(CONTENT_W*0.35)}),
     ]})]
   }));
 
@@ -1736,8 +1738,6 @@ window.exportDOCX = async () => {
       // Only show temperatures, electrical and results - no raw dimensions
       if(m.tsaida) measRows.push(['Temp. saída (insuflação)', m.tsaida+' °C']);
       if(m.tentrada) measRows.push(['Temp. entrada (retorno)', m.tentrada+' °C']);
-      if(m.corrente) measRows.push(['Corrente (I)', m.corrente+' A']);
-      if(m.fp) measRows.push(['Fator de potência', m.fp]);
       if(m.motor&&m.motor!=='Trifásico 400V') measRows.push(['Tipo de motor', m.motor]);
       // Computed
       const vel=parseFloat(m.vel)||0, larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0, diam=parseFloat(m.diam)||0;
@@ -1753,10 +1753,10 @@ window.exportDOCX = async () => {
       const V=isMono?230:400;
       const pelec=corr>0&&fp>0?+((isMono?1:Math.sqrt(3))*V*corr*fp/1000).toFixed(2):null;
       const efic=pterm&&pelec&&pelec>0?+(pterm/pelec).toFixed(2):null;
-      if(q_m3h) measRows.push(['Caudal calculado', q_m3h+' m³/h']);
+      if(q_m3h) measRows.push(['Caudal', q_m3h+' m³/h']);
       if(dt!==null) measRows.push(['ΔT (entrada−saída)', dt+' °C']);
       if(pterm) measRows.push(['Pot. térmica (ar húmido)', pterm+' kW']);
-      if(pelec) measRows.push(['Pot. elétrica calculada', pelec+' kW']);
+      if(pelec) measRows.push(['Pot. elétrica', pelec+' kW']);
       if(efic) measRows.push(['Eficiência (Pt/Pe)', String(efic)]);
 
       if(measRows.length) {
@@ -1886,6 +1886,22 @@ window.exportDOCX = async () => {
           size:{width:11906,height:16838},
           margin:{top:MARGIN,right:MARGIN,bottom:MARGIN,left:MARGIN}
         }
+      },
+      footers:{
+        default: new Footer({
+          children:[
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children:[
+                new TextRun({text:'Página ', font:'Arial', size:16, color:'888888'}),
+                new TextRun({children:[PageNumber.CURRENT], font:'Arial', size:16, color:'888888'}),
+                new TextRun({text:' de ', font:'Arial', size:16, color:'888888'}),
+                new TextRun({children:[PageNumber.TOTAL_PAGES], font:'Arial', size:16, color:'888888'}),
+              ],
+              spacing:{before:80,after:80},
+            })
+          ]
+        })
       },
       children
     }]
