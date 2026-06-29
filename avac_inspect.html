@@ -55,6 +55,26 @@ body{overflow-x:hidden}
 .session-meta{font-size:11px;color:var(--text2);margin-top:2px}
 .session-score{font-size:13px;font-weight:700;color:var(--ok)}
 .new-session-btn{width:calc(100% - 32px);margin:4px 16px;padding:13px;background:var(--accent);color:#0c1a2e;border:none;border-radius:var(--rsm);font-size:14px;font-weight:700;cursor:pointer}
+.new-folder-btn{width:calc(100% - 32px);margin:4px 16px;padding:11px;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:var(--rsm);font-size:13px;font-weight:600;cursor:pointer}
+.folder-block{border:1px solid var(--border);border-radius:var(--radius);margin:0 16px 8px;overflow:hidden}
+.folder-header{background:var(--surface);padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.folder-chevron{font-size:11px;color:var(--text3);transition:transform .2s;flex-shrink:0}
+.folder-chevron.open{transform:rotate(90deg)}
+.folder-name-text{flex:1;font-size:13px;font-weight:600;color:var(--text2)}
+.folder-count{font-size:11px;color:var(--text3)}
+.folder-actions{display:flex;gap:6px}
+.folder-body{display:none;border-top:1px solid var(--border)}
+.folder-body.open{display:block}
+.folder-drop-zone{min-height:44px;padding:6px 8px;display:flex;flex-direction:column;gap:6px}
+.folder-drop-zone.drag-over{background:var(--accent-dim);outline:2px dashed var(--accent);outline-offset:-2px;border-radius:4px}
+.folder-empty{padding:16px;text-align:center;font-size:12px;color:var(--text3)}
+.session-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 14px;display:flex;align-items:center;gap:8px;cursor:grab}
+.session-card:active{opacity:.7}
+.session-card.dragging{opacity:.4;cursor:grabbing}
+.session-card.drag-over-card{outline:2px dashed var(--accent);outline-offset:-2px}
+.ungrouped-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding:4px 16px 2px}
+.drop-root{min-height:8px;border-radius:var(--rsm);transition:background .15s}
+.drop-root.drag-over{background:var(--accent-dim);outline:2px dashed var(--accent);outline-offset:-2px;border-radius:var(--rsm)}
 .setup-form{padding:16px;display:flex;flex-direction:column;gap:10px}
 .field-group{display:flex;flex-direction:column;gap:4px}
 .field-group label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
@@ -217,9 +237,10 @@ body{overflow-x:hidden}
     <h1>Inspeções</h1>
     <p id="sessionsSubtitle">As tuas inspeções guardadas</p>
   </div>
-  <div class="session-list" id="sessionList"></div>
-  <div style="padding:0 16px 32px">
+  <div id="sessionList"></div>
+  <div style="padding:0 16px 32px;display:flex;flex-direction:column;gap:8px">
     <button class="new-session-btn" onclick="showNewSession()">+ Nova inspeção</button>
+    <button class="new-folder-btn" onclick="createFolder()">📁 Nova pasta</button>
   </div>
 </div>
 
@@ -395,33 +416,174 @@ onAuthStateChanged(auth, user => {
 });
 
 // ── SESSIONS ─────────────────────────────────────────────────────────────────
+// ── FOLDERS ──────────────────────────────────────────────────────────────────
+let _dragSessionId = null;
+let _folderCollapsed = {};  // folderId → bool (persisted in localStorage)
+
+function _loadCollapsed() {
+  try { _folderCollapsed = JSON.parse(localStorage.getItem('avac_folder_collapsed')||'{}'); } catch(e) { _folderCollapsed={}; }
+}
+function _saveCollapsed() {
+  localStorage.setItem('avac_folder_collapsed', JSON.stringify(_folderCollapsed));
+}
+
+function sessionCardHTML(id, s) {
+  const sc = calcScoreFromSession(s);
+  const scStr = sc.tot > 0 ? `${sc.pct}%` : '—';
+  const scColor = sc.pct >= 90 ? 'var(--ok)' : sc.pct >= 75 ? 'var(--warn)' : 'var(--nok)';
+  const d = s.meta?.data || '—';
+  const nEq = Object.keys(s.utas||{}).length + Object.keys(s.chillers||{}).length + Object.keys(s.bombas||{}).length + Object.keys(s.vasos||{}).length + Object.keys(s.vrvs||{}).length + Object.keys(s.quadros||{}).length;
+  const lojaEsc = (s.meta?.loja||'esta inspeção').replace(/'/g,"\\'");
+  return `<div class="session-card" id="sc-${id}" draggable="true"
+    ondragstart="dragStart(event,'${id}')"
+    ondragend="dragEnd(event)">
+    <div style="flex:1;cursor:pointer" onclick="openSession('${id}')">
+      <div class="session-name">${s.meta?.loja || 'Sem nome'}</div>
+      <div class="session-meta">${d} · ${nEq} equip.</div>
+    </div>
+    <div class="session-score" style="color:${scColor};cursor:pointer" onclick="openSession('${id}')">${scStr}</div>
+    <button onclick="deleteSession('${id}','${lojaEsc}')" style="width:30px;height:30px;border-radius:6px;background:var(--nok-bg);border:1px solid var(--nok-border);color:var(--nok);font-size:14px;cursor:pointer;flex-shrink:0">🗑</button>
+  </div>`;
+}
+
+window.dragStart = (e, sessionId) => {
+  _dragSessionId = sessionId;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => { const el=document.getElementById('sc-'+sessionId); if(el) el.classList.add('dragging'); }, 0);
+};
+window.dragEnd = (e) => {
+  document.querySelectorAll('.dragging').forEach(el=>el.classList.remove('dragging'));
+  document.querySelectorAll('.drag-over,.drag-over-card').forEach(el=>el.classList.remove('drag-over','drag-over-card'));
+};
+window.dragOverZone = (e, el) => { e.preventDefault(); el.classList.add('drag-over'); };
+window.dragLeaveZone = (e, el) => { el.classList.remove('drag-over'); };
+window.dropOnFolder = async (e, folderId) => {
+  e.preventDefault();
+  const zoneEl = e.currentTarget;
+  zoneEl.classList.remove('drag-over');
+  if(!_dragSessionId) return;
+  await set(ref(db, `users/${currentUser.uid}/sessions/${_dragSessionId}/folderId`), folderId);
+  _dragSessionId = null;
+  loadSessions();
+};
+window.dropOnRoot = async (e) => {
+  e.preventDefault();
+  const zoneEl = e.currentTarget;
+  zoneEl.classList.remove('drag-over');
+  if(!_dragSessionId) return;
+  await set(ref(db, `users/${currentUser.uid}/sessions/${_dragSessionId}/folderId`), null);
+  _dragSessionId = null;
+  loadSessions();
+};
+window.toggleFolder = (folderId) => {
+  _folderCollapsed[folderId] = !_folderCollapsed[folderId];
+  _saveCollapsed();
+  const body = document.getElementById('fb-'+folderId);
+  const chev = document.getElementById('fchev-'+folderId);
+  if(body) body.classList.toggle('open', !_folderCollapsed[folderId]);
+  if(chev) chev.classList.toggle('open', !_folderCollapsed[folderId]);
+};
+window.createFolder = async () => {
+  const name = prompt('Nome da pasta:', 'Arquivo 2025');
+  if(!name || !name.trim()) return;
+  const fRef = push(ref(db, `users/${currentUser.uid}/folders`));
+  await set(fRef, { name: name.trim(), createdAt: Date.now() });
+  loadSessions();
+};
+window.renameFolder = async (e, folderId, oldName) => {
+  e.stopPropagation();
+  const name = prompt('Novo nome:', oldName);
+  if(!name || !name.trim() || name.trim()===oldName) return;
+  await set(ref(db, `users/${currentUser.uid}/folders/${folderId}/name`), name.trim());
+  loadSessions();
+};
+window.deleteFolder = async (e, folderId, folderName) => {
+  e.stopPropagation();
+  if(!confirm(`Apagar pasta "${folderName}"? As inspeções dentro ficam sem pasta.`)) return;
+  // Remove folderId from all sessions in this folder
+  const snap = await get(ref(db, `users/${currentUser.uid}/sessions`));
+  if(snap.exists()) {
+    const sessions = snap.val();
+    const promises = Object.entries(sessions)
+      .filter(([,s]) => s.folderId === folderId)
+      .map(([id]) => set(ref(db, `users/${currentUser.uid}/sessions/${id}/folderId`), null));
+    await Promise.all(promises);
+  }
+  await set(ref(db, `users/${currentUser.uid}/folders/${folderId}`), null);
+  loadSessions();
+};
+
 async function loadSessions() {
   showPage('pgSessions');
   document.getElementById('tbTitle').textContent = 'AVAC Inspect';
   document.getElementById('tbSub').textContent = localStorage.getItem('avac_display_name') || 'Auditor';
   document.getElementById('tbScore').style.display = 'none';
   if(dbListener) { dbListener(); dbListener = null; }
-  const snap = await get(ref(db, `users/${currentUser.uid}/sessions`));
+  _loadCollapsed();
+
+  const [sessSnap, foldSnap] = await Promise.all([
+    get(ref(db, `users/${currentUser.uid}/sessions`)),
+    get(ref(db, `users/${currentUser.uid}/folders`)),
+  ]);
+
   const list = document.getElementById('sessionList');
-  if(!snap.exists()) { list.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--text3);font-size:13px">Sem inspeções. Cria a primeira!</div>'; return; }
-  const sessions = snap.val();
-  const sorted = Object.entries(sessions).sort((a,b) => (b[1].updatedAt||0)-(a[1].updatedAt||0));
-  list.innerHTML = sorted.map(([id,s]) => {
-    const sc = calcScoreFromSession(s);
-    const scStr = sc.tot > 0 ? `${sc.pct}%` : '—';
-    const scColor = sc.pct >= 90 ? 'var(--ok)' : sc.pct >= 75 ? 'var(--warn)' : 'var(--nok)';
-    const d = s.meta?.data || '—';
-    const nEq = Object.keys(s.utas||{}).length + Object.keys(s.chillers||{}).length + Object.keys(s.bombas||{}).length + Object.keys(s.vasos||{}).length + Object.keys(s.vrvs||{}).length + Object.keys(s.quadros||{}).length;
-    return `<div class="session-card" style="display:flex;align-items:center;gap:8px">
-      <div style="flex:1;cursor:pointer" onclick="openSession('${id}')">
-        <div class="session-name">${s.meta?.loja || 'Sem nome'}</div>
-        <div class="session-meta">${d} · ${nEq} equip.</div>
+  const totalSessions = sessSnap.exists() ? Object.keys(sessSnap.val()).length : 0;
+  document.getElementById('sessionsSubtitle').textContent = `${totalSessions} inspeção(ões)`;
+
+  if(!sessSnap.exists() && !foldSnap.exists()) {
+    list.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--text3);font-size:13px">Sem inspeções. Cria a primeira!</div>';
+    return;
+  }
+
+  const sessions = sessSnap.exists() ? sessSnap.val() : {};
+  const folders = foldSnap.exists() ? foldSnap.val() : {};
+
+  const sortedFolders = Object.entries(folders).sort((a,b)=>(a[1].createdAt||0)-(b[1].createdAt||0));
+  const sortedSessions = Object.entries(sessions).sort((a,b)=>(b[1].updatedAt||0)-(a[1].updatedAt||0));
+
+  let html = '';
+
+  // ── Folders ──
+  for(const [fid, f] of sortedFolders) {
+    const inFolder = sortedSessions.filter(([,s])=>s.folderId===fid);
+    const isOpen = !_folderCollapsed[fid];
+    html += `<div class="folder-block">
+      <div class="folder-header" onclick="toggleFolder('${fid}')">
+        <span class="folder-chevron${isOpen?' open':''}" id="fchev-${fid}">▶</span>
+        <span class="folder-name-text">📁 ${f.name}</span>
+        <span class="folder-count">${inFolder.length}</span>
+        <div class="folder-actions" onclick="event.stopPropagation()">
+          <button onclick="renameFolder(event,'${fid}','${(f.name||'').replace(/'/g,"\\'")}')
+          " style="padding:3px 8px;border-radius:4px;background:transparent;border:1px solid var(--border);color:var(--text3);font-size:11px;cursor:pointer">✏️</button>
+          <button onclick="deleteFolder(event,'${fid}','${(f.name||'').replace(/'/g,"\\'")}')
+          " style="padding:3px 8px;border-radius:4px;background:transparent;border:1px solid var(--nok-border);color:var(--nok);font-size:11px;cursor:pointer">🗑</button>
+        </div>
       </div>
-      <div class="session-score" style="color:${scColor};cursor:pointer" onclick="openSession('${id}')">${scStr}</div>
-      <button onclick="deleteSession('${id}','${(s.meta?.loja||'esta inspeção').replace(/'/g,'')}')" style="width:30px;height:30px;border-radius:6px;background:var(--nok-bg);border:1px solid var(--nok-border);color:var(--nok);font-size:14px;cursor:pointer;flex-shrink:0">🗑</button>
+      <div class="folder-body${isOpen?' open':''}" id="fb-${fid}">
+        <div class="folder-drop-zone" id="fz-${fid}"
+          ondragover="dragOverZone(event,this)"
+          ondragleave="dragLeaveZone(event,this)"
+          ondrop="dropOnFolder(event,'${fid}')">
+          ${inFolder.length ? inFolder.map(([id,s])=>sessionCardHTML(id,s)).join('') : '<div class="folder-empty">Arrasta inspeções para aqui</div>'}
+        </div>
+      </div>
     </div>`;
-  }).join('');
-  document.getElementById('sessionsSubtitle').textContent = `${sorted.length} inspeção(ões)`;
+  }
+
+  // ── Ungrouped ──
+  const ungrouped = sortedSessions.filter(([,s])=>!s.folderId || !folders[s.folderId]);
+  if(ungrouped.length || sortedFolders.length) {
+    if(sortedFolders.length) html += `<div class="ungrouped-label">Sem pasta</div>`;
+    html += `<div class="drop-root" style="padding:0 16px;display:flex;flex-direction:column;gap:8px;min-height:${ungrouped.length?'0':'48px'}"
+      ondragover="dragOverZone(event,this)"
+      ondragleave="dragLeaveZone(event,this)"
+      ondrop="dropOnRoot(event)">
+      ${ungrouped.map(([id,s])=>sessionCardHTML(id,s)).join('')}
+      ${!ungrouped.length && sortedFolders.length ? '<div style="padding:12px 0;text-align:center;font-size:12px;color:var(--text3)">Arrasta aqui para remover de pasta</div>' : ''}
+    </div>`;
+  }
+
+  list.innerHTML = html;
 };
 
 window.showNewSession = () => {
