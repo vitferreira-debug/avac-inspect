@@ -1771,14 +1771,43 @@ window.exportDOCX = async () => {
         }));
       }
 
-      // Photos
+      // General photos (array) — shown FIRST, before checklist photos
+      const generalPhotos = Array.isArray(e.photos_geral) ? e.photos_geral : (e.photo_geral ? [e.photo_geral] : []);
+      if(generalPhotos.length) {
+        children.push(par([txt('Fotografias',{bold:true,size:18,color:'444444'})],{before:80,after:40}));
+        const gImgRuns = [];
+        for(const gsrc of generalPhotos) {
+          try {
+            const gb = gsrc.split(',')[1];
+            const gt = gsrc.startsWith('data:image/png')?'png':'jpeg';
+            const gbs = atob(gb); const ga = new Uint8Array(gbs.length);
+            for(let i=0;i<gbs.length;i++) ga[i]=gbs.charCodeAt(i);
+            gImgRuns.push({data:ga,type:gt});
+          } catch(eg) {}
+        }
+        // colW in DXA → convert to pt: 1 DXA = 1/20 pt... actually docx ImageRun uses pt
+        // CONTENT_W ~ 9638 DXA, half col ~ 4759 DXA → in pt: 4759/20 = ~238pt
+        const gColPt = Math.round((CONTENT_W / 2 - 60) / 20);
+        for(let gi=0;gi<gImgRuns.length;gi+=2) {
+          const g1=gImgRuns[gi], g2=gImgRuns[gi+1]||null;
+          children.push(new Table({
+            width:{size:CONTENT_W,type:WidthType.DXA},
+            columnWidths:[Math.round(CONTENT_W/2), Math.round(CONTENT_W/2)],
+            rows:[new TableRow({children:[
+              cell([par([new ImageRun({data:g1.data,transformation:{width:gColPt,height:Math.round(gColPt*0.67)},type:g1.type})])],{borders:noBorder,width:Math.round(CONTENT_W/2)}),
+              ...(g2?[cell([par([new ImageRun({data:g2.data,transformation:{width:gColPt,height:Math.round(gColPt*0.67)},type:g2.type})])],{borders:noBorder,width:Math.round(CONTENT_W/2)})]:[cell([par([txt('')])],{borders:noBorder,width:Math.round(CONTENT_W/2)})]),
+            ]})]
+          }));
+        }
+      }
+
+      // Checklist photos
       const allPhotos = [];
       Object.entries(e.photos||{}).forEach(([ck,photos])=>{
         (photos||[]).forEach(p=>allPhotos.push({label:itemMap[ck]||ck, src:p}));
       });
       if(allPhotos.length) {
-        children.push(par([txt('Fotografias',{bold:true,size:18,color:'444444'})],{before:80,after:40}));
-        // Build image runs array for 2x2 layout
+        if(!generalPhotos.length) children.push(par([txt('Fotografias',{bold:true,size:18,color:'444444'})],{before:80,after:40}));
         const imgRuns = [];
         for(const ph of allPhotos) {
           try {
@@ -1790,53 +1819,22 @@ window.exportDOCX = async () => {
             imgRuns.push({label:ph.label, data:arr, type:imgType});
           } catch(e2) {}
         }
-        // Render 2 per row using table
+        const colPt = Math.round((CONTENT_W / 2 - 60) / 20);
         for(let i=0;i<imgRuns.length;i+=2) {
           const r1=imgRuns[i], r2=imgRuns[i+1]||null;
-          const colW = Math.round(CONTENT_W/2)-60;
           children.push(new Table({
             width:{size:CONTENT_W,type:WidthType.DXA},
-            columnWidths:[colW+60, r2?colW:0],
+            columnWidths:[Math.round(CONTENT_W/2), Math.round(CONTENT_W/2)],
             rows:[
-              // Label row
               new TableRow({children:[
-                cell([par([txt(r1.label,{size:15,color:'666666'})])],{borders:noBorder,width:colW+60}),
-                ...(r2?[cell([par([txt(r2.label,{size:15,color:'666666'})])],{borders:noBorder,width:colW})]:[]),
+                cell([par([txt(r1.label,{size:15,color:'666666'})])],{borders:noBorder,width:Math.round(CONTENT_W/2)}),
+                ...(r2?[cell([par([txt(r2.label,{size:15,color:'666666'})])],{borders:noBorder,width:Math.round(CONTENT_W/2)})]:[cell([par([txt('')])],{borders:noBorder,width:Math.round(CONTENT_W/2)})]),
               ]}),
-              // Image row
               new TableRow({children:[
-                cell([par([new ImageRun({data:r1.data,transformation:{width:colW/15,height:Math.round(colW/15*0.67)},type:r1.type})])],{borders:noBorder,width:colW+60}),
-                ...(r2?[cell([par([new ImageRun({data:r2.data,transformation:{width:colW/15,height:Math.round(colW/15*0.67)},type:r2.type})])],{borders:noBorder,width:colW})]:[]),
+                cell([par([new ImageRun({data:r1.data,transformation:{width:colPt,height:Math.round(colPt*0.67)},type:r1.type})])],{borders:noBorder,width:Math.round(CONTENT_W/2)}),
+                ...(r2?[cell([par([new ImageRun({data:r2.data,transformation:{width:colPt,height:Math.round(colPt*0.67)},type:r2.type})])],{borders:noBorder,width:Math.round(CONTENT_W/2)})]:[cell([par([txt('')])],{borders:noBorder,width:Math.round(CONTENT_W/2)})]),
               ]}),
             ]
-          }));
-        }
-      }
-
-      // General photos (array)
-      const generalPhotos = Array.isArray(e.photos_geral) ? e.photos_geral : (e.photo_geral ? [e.photo_geral] : []);
-      if(generalPhotos.length) {
-        children.push(par([txt('Fotos gerais do equipamento',{bold:true,size:18,color:'444444'})],{before:80,after:40}));
-        const gImgRuns = [];
-        for(const gsrc of generalPhotos) {
-          try {
-            const gb = gsrc.split(',')[1];
-            const gt = gsrc.startsWith('data:image/png')?'png':'jpeg';
-            const gbs = atob(gb); const ga = new Uint8Array(gbs.length);
-            for(let i=0;i<gbs.length;i++) ga[i]=gbs.charCodeAt(i);
-            gImgRuns.push({data:ga,type:gt});
-          } catch(eg) {}
-        }
-        const gColW = Math.round(CONTENT_W/2)-60;
-        for(let gi=0;gi<gImgRuns.length;gi+=2) {
-          const g1=gImgRuns[gi], g2=gImgRuns[gi+1]||null;
-          children.push(new Table({
-            width:{size:CONTENT_W,type:WidthType.DXA},
-            columnWidths:[gColW+60, g2?gColW:0],
-            rows:[new TableRow({children:[
-              cell([par([new ImageRun({data:g1.data,transformation:{width:Math.round(gColW/15),height:Math.round(gColW/15*0.67)},type:g1.type})])],{borders:noBorder,width:gColW+60}),
-              ...(g2?[cell([par([new ImageRun({data:g2.data,transformation:{width:Math.round(gColW/15),height:Math.round(gColW/15*0.67)},type:g2.type})])],{borders:noBorder,width:gColW})]:[]),
-            ]})]
           }));
         }
       }
