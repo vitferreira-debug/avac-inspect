@@ -218,7 +218,7 @@ body{overflow-x:hidden}
     <div class="auth-icon">🌡️</div>
     <div class="auth-title">AVAC Inspect</div>
     <div class="auth-sub">Introduz o código de acesso da equipa.</div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">v3.9</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">v4.0</div>
     <div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px">
       <input type="text" id="authUser" placeholder="O teu nome (ex: Vitor)" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none">
       <input type="password" id="authPass" placeholder="Código de acesso" style="width:100%;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')signInPass()">
@@ -483,8 +483,24 @@ window.toggleFolder = (folderId) => {
   if(body) body.classList.toggle('open', !_folderCollapsed[folderId]);
   if(chev) chev.classList.toggle('open', !_folderCollapsed[folderId]);
 };
+
+// Caixa de texto própria (prompt() nativo falha em alguns browsers embutidos/tablets)
+function askText(msg, def){
+  return new Promise(res=>{
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML='<div style="background:var(--surface,#fff);color:var(--text,#111);border-radius:12px;padding:18px;width:100%;max-width:340px;box-shadow:0 8px 30px rgba(0,0,0,.3)"><div style="font-size:14px;font-weight:600;margin-bottom:10px"></div><input type="text" style="width:100%;padding:10px;font-size:16px;border:1px solid var(--border,#ccc);border-radius:8px;box-sizing:border-box;background:var(--bg,#fff);color:inherit"><div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end"><button data-c style="padding:9px 14px;border:1px solid var(--border,#ccc);border-radius:8px;background:transparent;color:inherit">Cancelar</button><button data-o style="padding:9px 14px;border:0;border-radius:8px;background:#1a7fc1;color:#fff;font-weight:600">OK</button></div></div>';
+    ov.querySelector('div>div').textContent=msg;
+    const inp=ov.querySelector('input'); inp.value=def||'';
+    const done=x=>{ov.remove();res(x);};
+    ov.querySelector('[data-c]').onclick=()=>done(null);
+    ov.querySelector('[data-o]').onclick=()=>done(inp.value);
+    inp.onkeydown=e=>{if(e.key==='Enter')done(inp.value);if(e.key==='Escape')done(null);};
+    document.body.appendChild(ov); inp.focus(); inp.select();
+  });
+}
 window.createFolder = async () => {
-  const name = prompt('Nome da pasta:', 'Arquivo 2025');
+  const name = await askText('Nome da pasta:', 'Arquivo 2025');
   if(!name || !name.trim()) return;
   const fRef = push(ref(db, `users/${currentUser.uid}/folders`));
   await set(fRef, { name: name.trim(), createdAt: Date.now() });
@@ -492,7 +508,7 @@ window.createFolder = async () => {
 };
 window.renameFolder = async (e, folderId, oldName) => {
   e.stopPropagation();
-  const name = prompt('Novo nome:', oldName);
+  const name = await askText('Novo nome:', oldName);
   if(!name || !name.trim() || name.trim()===oldName) return;
   await set(ref(db, `users/${currentUser.uid}/folders/${folderId}/name`), name.trim());
   loadSessions();
@@ -1156,6 +1172,7 @@ function typeToArr(t) { return {uta:'utas',chiller:'chillers',bomba:'bombas',vas
 
 // ── AI LOOKUP ─────────────────────────────────────────────────────────────────
 window.lookupNominal = async (type, key) => {
+  showToast('Dados nominais por IA indisponíveis (sem chave). Preencha pot. térmica/elétrica nominais manualmente.','err'); return;
   const arr=typeToArr(type);
   const e=currentSession[arr]?.[key];
   if(!e?.marca||!e?.modelo) return;
@@ -1171,7 +1188,6 @@ Se não souberes, usa null. Não inventes.`;
     method:'POST',
     headers:{
       'Content-Type':'application/json',
-      'x-api-key':'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',
       'anthropic-version':'2023-06-01',
       'anthropic-dangerous-direct-browser-access':'true'
     },
