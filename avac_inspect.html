@@ -363,6 +363,35 @@ let currentSessionId = null;
 let currentSession = null;
 let dbListener = null;
 let activeIdxs = {uta:0,chiller:0,bomba:0,vaso:0,vrv:0,quadro:0};
+// ── LISTAS DE EQUIPAMENTOS: mesma ordem (por chave) em separadores, resumo e relatórios ──
+const eqEntries = map => Object.entries(map||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+const eqValues = map => eqEntries(map).map(([,e])=>e);
+// Escape para atributos/HTML (evita truncar valores com aspas, ex.: 24")
+const esc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// Nome a mostrar: nome personalizado, senão o nome de origem
+const eqLabel = e => (e&&(e.nome||e.name))||'';
+// Cálculos da UTA, iguais aos da ficha (measuresHTML)
+const utaCalc = e => { const m=(e&&e.measures)||{};
+  const circ=(m.conduta||'Retangular')==='Circular', mono=(m.motor||'Trifásico 400V')==='Monofásico 230V';
+  const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0,d=parseFloat(m.diam)||0;
+  const q=circ?(v>0&&d>0?v*Math.PI*Math.pow(d/100/2,2):0):(v>0&&l>0&&a>0?v*(l/100)*(a/100):0);
+  const ts=m.tsaida!==undefined&&m.tsaida!==''?parseFloat(m.tsaida):NaN, te=m.tentrada!==undefined&&m.tentrada!==''?parseFloat(m.tentrada):NaN;
+  const dt=(!isNaN(ts)&&!isNaN(te))?+Math.abs(te-ts).toFixed(1):null;
+  const modo=dt?(ts>te?'aquecimento':'arrefecimento'):'';
+  const pterm=(q>0&&dt!==null)?+(q*1.225*1.006*dt*1.1).toFixed(2):null;
+  const I=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
+  const pelec=(I>0&&fp>0)?+((mono?1:Math.sqrt(3))*(mono?230:400)*I*fp/1000).toFixed(2):null;
+  const efic=(pterm&&pelec&&pelec>0)?+(pterm/pelec).toFixed(2):null;
+  return {caudal:q>0?Math.round(q*3600):null, dt, modo, pterm, pelec, efic}; };
+// Nº de pontos de verificação por tipo e estado "completo"
+const checksOf = type => ({uta:UTA_CHECKS,chiller:CHILLER_CHECKS,bomba:BOMBA_CHECKS,vaso:VASO_CHECKS,vrv:VRV_CHECKS,quadro:QUADRO_CHECKS}[type]||[]);
+const eqComplete = (e,type) => { const items=checksOf(type).flatMap(sc=>sc.items); const c=e.checks||{};
+  return items.length>0 && items.every(i=>c[i.k]==='ok'||c[i.k]==='nok'||c[i.k]==='na'); };
+const answered = v => v==='ok'||v==='nok';
+// Caudal (m³/h) igual ao da ficha: conduta retangular ou circular
+const caudalM3h = m => { m=m||{}; const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0,d=parseFloat(m.diam)||0;
+  const q=(m.conduta||'Retangular')==='Circular'?(v>0&&d>0?v*Math.PI*Math.pow(d/100/2,2):0):(v>0&&l>0&&a>0?v*(l/100)*(a/100):0);
+  return q>0?Math.round(q*3600):null; };
 let newCounts = {};
 let autoSaveTimer = null;
 
@@ -555,7 +584,7 @@ async function loadSessions() {
   const folders = foldSnap.exists() ? foldSnap.val() : {};
 
   const sortedFolders = Object.entries(folders).sort((a,b)=>(a[1].createdAt||0)-(b[1].createdAt||0));
-  const sortedSessions = Object.entries(sessions).sort((a,b)=>(b[1].updatedAt||0)-(a[1].updatedAt||0));
+  const sortedSessions = Object.entries(sessions).sort((a,b)=>{const t=x=>Math.max(x.updatedAt||0,x.meta?.updatedAt||0,x.meta?.createdAt||0);return t(b[1])-t(a[1]);});
 
   let html = '';
 
@@ -752,12 +781,12 @@ function renderInspection() {
   document.getElementById('tbSub').textContent = s.meta?.data || '';
   document.getElementById('tbScore').style.display = 'block';
 
-  const utaList = Object.entries(s.utas||{}).sort((a,b)=>a[0].localeCompare(b[0]));
-  const chList = Object.entries(s.chillers||{}).sort((a,b)=>a[0].localeCompare(b[0]));
-  const bpList = Object.entries(s.bombas||{}).sort((a,b)=>a[0].localeCompare(b[0]));
-  const vsList = Object.entries(s.vasos||{}).sort((a,b)=>a[0].localeCompare(b[0]));
-  const vrList = Object.entries(s.vrvs||{}).sort((a,b)=>a[0].localeCompare(b[0]));
-  const qeList = Object.entries(s.quadros||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+  const utaList = eqEntries(s.utas);
+  const chList = eqEntries(s.chillers);
+  const bpList = eqEntries(s.bombas);
+  const vsList = eqEntries(s.vasos);
+  const vrList = eqEntries(s.vrvs);
+  const qeList = eqEntries(s.quadros);
 
   let html = '';
 
@@ -774,15 +803,15 @@ function renderInspection() {
     <div class="section-body open" id="sec_loja_info">
       <div class="measure-row">
         <span class="measure-label">Nome da loja</span>
-        <input class="measure-input" type="text" value="${lojaInfo.loja||''}" placeholder="—" style="width:200px" onblur="updateMetaField('loja',this.value)">
+        <input class="measure-input" type="text" value="${esc(lojaInfo.loja||'')}" placeholder="—" style="width:200px" onblur="updateMetaField('loja',this.value)">
       </div>
       <div class="measure-row">
         <span class="measure-label">Localização</span>
-        <input class="measure-input" type="text" value="${lojaInfo.localizacao||''}" placeholder="ex: Lisboa, LI" style="width:200px" onblur="updateMetaField('localizacao',this.value)">
+        <input class="measure-input" type="text" value="${esc(lojaInfo.localizacao||'')}" placeholder="ex: Lisboa, LI" style="width:200px" onblur="updateMetaField('localizacao',this.value)">
       </div>
       <div style="padding:9px 16px;border-bottom:1px solid var(--border)">
         <div style="font-size:12px;color:var(--text2);margin-bottom:6px">Problemáticas da loja</div>
-        <textarea style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;padding:8px;outline:none;resize:vertical;min-height:80px;font-family:inherit" placeholder="Descreve as problemáticas reportadas pelo responsável de loja..." onblur="updateMetaField('problematicas',this.value)">${lojaInfo.problematicas||''}</textarea>
+        <textarea style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;padding:8px;outline:none;resize:vertical;min-height:80px;font-family:inherit" placeholder="Descreve as problemáticas reportadas pelo responsável de loja..." onblur="updateMetaField('problematicas',this.value)">${esc(lojaInfo.problematicas||'')}</textarea>
       </div>
     </div>
   </div>`;
@@ -795,7 +824,7 @@ function renderInspection() {
     html += checksHTML(uta, UTA_CHECKS, 'uta', utaKey);
     html += measuresHTML(uta, UTA_MEASURES, 'uta', utaKey);
     html += noteHTML(uta, 'uta', utaKey);
-    if(utaList.some(([,e])=>{const m=e.measures||{};return m.vel&&m.larg&&m.alt;})) html += caudaisSummaryHTML(utaList);
+    if(utaList.some(([,e])=>caudalM3h(e.measures))) html += caudaisSummaryHTML(utaList);
   }
   html += powerHTML(s.power||{});
   if(chList.length) {
@@ -845,9 +874,9 @@ function stripHTML(list, activeI, type, label) {
   const chips = list.map(([key,e],i) => {
     const vals = Object.values(e.checks||{});
     const hasNok = vals.some(v=>v==='nok');
-    const complete = vals.length>0 && vals.every(v=>v!==null);
+    const complete = eqComplete(e,type);
     const cls = i===activeI?'eq-chip active':hasNok?'eq-chip hasnok':complete?'eq-chip complete':'eq-chip';
-    return `<button class="${cls}" onclick="switchEq('${type}',${i})">${e.nome||e.name||key}</button>`;
+    return `<button class="${cls}" onclick="switchEq('${type}',${i})">${esc(eqLabel(e)||key)}</button>`;
   }).join('');
   return `<div class="eq-strip-wrap"><div class="eq-strip-label">${label}</div><div class="eq-strip">${chips}</div></div>`;
 }
@@ -864,15 +893,15 @@ function eqMetaHTML(e, type, key) {
   return `<div class="eq-meta">
     <div class="field-wrap" style="margin-bottom:8px">
       <div class="eq-meta-label">Nome / Referência do equipamento</div>
-      <input type="text" value="${e.nome||''}" placeholder="ex: CL01, UTA-Armazém..." onblur="setMeta('${type}','${key}','nome',this.value)" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;outline:none">
+      <input type="text" value="${esc(e.nome||'')}" placeholder="ex: CL01, UTA-Armazém..." onblur="setMeta('${type}','${key}','nome',this.value)" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;outline:none">
     </div>
     <div class="eq-meta-grid">
-      <div><div class="eq-meta-label">Marca</div><input type="text" value="${e.marca||''}" placeholder="ex: Termobrasil" onblur="setMeta('${type}','${key}','marca',this.value)"></div>
-      <div><div class="eq-meta-label">Modelo</div><input type="text" value="${e.modelo||''}" placeholder="ex: FAH100" onblur="setMeta('${type}','${key}','modelo',this.value)"></div>
+      <div><div class="eq-meta-label">Marca</div><input type="text" value="${esc(e.marca||'')}" placeholder="ex: Termobrasil" onblur="setMeta('${type}','${key}','marca',this.value)"></div>
+      <div><div class="eq-meta-label">Modelo</div><input type="text" value="${esc(e.modelo||'')}" placeholder="ex: FAH100" onblur="setMeta('${type}','${key}','modelo',this.value)"></div>
     </div>
     <div class="eq-meta-grid">
-      <div><div class="eq-meta-label">Pot. térmica nom. (kW)</div><input type="text" inputmode="decimal" value="${e.pterm_nom||''}" placeholder="ex: 15.5" onblur="setMeta('${type}','${key}','pterm_nom',this.value)"></div>
-      <div><div class="eq-meta-label">Pot. elétrica nom. (kW)</div><input type="text" inputmode="decimal" value="${e.pelec_nom||''}" placeholder="ex: 4.2" onblur="setMeta('${type}','${key}','pelec_nom',this.value)"></div>
+      <div><div class="eq-meta-label">Pot. térmica nom. (kW)</div><input type="text" inputmode="decimal" value="${esc(e.pterm_nom||'')}" placeholder="ex: 15.5" onblur="setMeta('${type}','${key}','pterm_nom',this.value)"></div>
+      <div><div class="eq-meta-label">Pot. elétrica nom. (kW)</div><input type="text" inputmode="decimal" value="${esc(e.pelec_nom||'')}" placeholder="ex: 4.2" onblur="setMeta('${type}','${key}','pelec_nom',this.value)"></div>
     </div>
     <div style="display:flex;gap:6px;margin-top:4px">
       <button class="ai-btn" style="flex:1" ${!hasData?'disabled':''} id="aiBtn_${key}" onclick="lookupNominal('${type}','${key}')">✨ Dados nominais (IA)</button>
@@ -890,16 +919,15 @@ function eqMetaHTML(e, type, key) {
 
 function nominalHTML(e) {
   const n = e.nominal, m = e.measures||{};
-  const vel=parseFloat(m.vel)||0,larg=parseFloat(m.larg)||0,alt=parseFloat(m.alt)||0;
-  const caudal=vel&&larg&&alt?Math.round(vel*(larg/100)*(alt/100)*3600):null;
-  const pelec=parseFloat(m.pelec)||0;
-  const eer=n.potencia_termica_kw&&pelec?(n.potencia_termica_kw/pelec).toFixed(2):null;
+  const uc=utaCalc(e);
+  const caudal=uc.caudal;
+  const eer=uc.efic;
   const effC=caudal&&n.caudal_m3h?Math.round(caudal/n.caudal_m3h*100):null;
   let cards='';
   if(n.caudal_m3h) cards+=`<div class="nom-card"><div class="nom-label">Caudal nominal</div><div class="nom-val">${n.caudal_m3h} m³/h</div></div>`;
   if(caudal) cards+=`<div class="nom-card"><div class="nom-label">Caudal medido</div><div class="nom-val ${effC&&(effC<80||effC>120)?'wn':'hi'}">${caudal} m³/h${effC?' ('+effC+'%)':''}</div></div>`;
   if(n.potencia_termica_kw) cards+=`<div class="nom-card"><div class="nom-label">P. térmica nom.</div><div class="nom-val">${n.potencia_termica_kw} kW</div></div>`;
-  if(eer) cards+=`<div class="nom-card"><div class="nom-label">EER real</div><div class="nom-val hi">${eer}</div></div>`;
+  if(eer) cards+=`<div class="nom-card"><div class="nom-label">Eficiência real (Pt/Pe)</div><div class="nom-val hi">${eer}</div></div>`;
   if(n.cop_nominal) cards+=`<div class="nom-card"><div class="nom-label">COP nominal</div><div class="nom-val">${n.cop_nominal}</div></div>`;
   if(n.eer_nominal) cards+=`<div class="nom-card"><div class="nom-label">EER nominal</div><div class="nom-val">${n.eer_nominal}</div></div>`;
   return `<div class="nominal-grid">${cards}</div>${n.nota?`<div class="nom-note">ℹ ${n.nota}</div>`:''}`;
@@ -908,7 +936,7 @@ function nominalHTML(e) {
 function checksHTML(e, secs, type, key) {
   return secs.map(s => {
     const secOk=s.items.filter(i=>(e.checks||{})[i.k]==='ok').length;
-    const secTot=s.items.filter(i=>(e.checks||{})[i.k]!==null&&(e.checks||{})[i.k]!=='na').length;
+    const secTot=s.items.filter(i=>answered((e.checks||{})[i.k])).length;
     const pct=secTot>0?Math.round(secOk/secTot*100):null;
     const pctColor=pct===null?'var(--text3)':pct===100?'var(--ok)':pct>=75?'var(--warn)':'var(--nok)';
     const sid=`s_${key}_${s.sec.replace(/\W/g,'_')}`;
@@ -954,7 +982,8 @@ function measuresHTML(e, fields, type, key) {
   const caudal_m3h = caudal_m3s>0 ? Math.round(caudal_m3s*3600) : null;
   const tsaida = m.tsaida!==undefined&&m.tsaida!=='' ? parseFloat(m.tsaida) : NaN;
   const tentrada = m.tentrada!==undefined&&m.tentrada!=='' ? parseFloat(m.tentrada) : NaN;
-  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? +(tentrada-tsaida).toFixed(1) : null;
+  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? +Math.abs(tentrada-tsaida).toFixed(1) : null;
+  const modoT = deltaT ? (tsaida>tentrada?' · aquecimento':' · arrefecimento') : '';
   const pterm = (caudal_m3s>0&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
   const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const V = isMono ? 230 : 400;
@@ -988,7 +1017,7 @@ function measuresHTML(e, fields, type, key) {
     }
     const row = `<div class="measure-row">
       <span class="measure-label">${f.l}</span>
-      <input class="measure-input" type="text" inputmode="decimal" value="${m[f.k]||''}" placeholder="0.0" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
+      <input class="measure-input" type="text" inputmode="decimal" value="${esc(m[f.k]||'')}" placeholder="0.0" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
       <span class="measure-unit">${f.u}</span>
     </div>`;
     // After last dimension → caudal
@@ -998,7 +1027,7 @@ function measuresHTML(e, fields, type, key) {
     // After temp entrada → ΔT + potência térmica
     if(f.k==='tentrada') {
       return row
-        + (deltaT!==null ? computedRow('dt','ΔT (entrada−saída)',deltaT.toFixed(1),'°C') : '')
+        + (deltaT!==null ? computedRow('dt','ΔT |entrada−saída|',deltaT.toFixed(1),'°C'+modoT) : '')
         + computedRow('pterm','Pot. térmica (ar húmido)',pterm,'kW');
     }
     // After FP → potência elétrica + eficiência
@@ -1020,15 +1049,17 @@ function measuresHTML(e, fields, type, key) {
   </div>`;
 }
 
+function caudaisRows(list) {
+  return list.map(([,e])=>{
+    const m=e.measures||{};
+    const c=caudalM3h(m);
+    if(!c) return '';
+    return `<div class="measure-row"><span class="measure-label">${esc(eqLabel(e))}</span><span class="measure-computed">${c} m³/h${m.fp?' · FP '+parseFloat(m.fp).toFixed(2):''}</span></div>`;
+  }).join('');
+}
 function caudaisSummaryHTML(list) {
   const sid='s_caudais_sum';
-  const rows=list.map(([,e])=>{
-    const m=e.measures||{};
-    const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0;
-    const c=v&&l&&a?Math.round(v*(l/100)*(a/100)*3600):null;
-    if(!c) return '';
-    return `<div class="measure-row"><span class="measure-label">${e.name}</span><span class="measure-computed">${c} m³/h${m.fp?' · FP '+parseFloat(m.fp).toFixed(2):''}</span></div>`;
-  }).join('');
+  const rows=caudaisRows(list);
   if(!rows.trim()) return '';
   return `<div class="section-block">
     <div class="section-hdr" onclick="toggleSec('${sid}')">
@@ -1043,7 +1074,7 @@ function powerHTML(power) {
   const sid='s_power';
   const rows=POWER_FIELDS.map(f=>`<div class="measure-row">
     <span class="measure-label">${f.l}</span>
-    <input class="measure-input" type="text" inputmode="decimal" value="${power[f.k]||''}" placeholder="—" onchange="setPower('${f.k}',this.value)">
+    <input class="measure-input" type="text" inputmode="decimal" value="${esc(power[f.k]||'')}" placeholder="—" onchange="setPower('${f.k}',this.value)">
     <span class="measure-unit">kW</span>
   </div>`).join('');
   const total=POWER_FIELDS.reduce((a,f)=>a+(parseFloat(power[f.k])||0),0);
@@ -1058,7 +1089,7 @@ function powerHTML(power) {
 }
 
 function noteHTML(e, type, key) {
-  return `<div style="border-bottom:1px solid var(--border)"><textarea class="note-area" placeholder="Notas / observações..." onblur="setNote('${type}','${key}',this.value)">${e.note||''}</textarea></div>`;
+  return `<div style="border-bottom:1px solid var(--border)"><textarea class="note-area" placeholder="Notas / observações..." onblur="setNote('${type}','${key}',this.value)">${esc(e.note||'')}</textarea></div>`;
 }
 
 // ── INTERACTIONS ──────────────────────────────────────────────────────────────
@@ -1095,7 +1126,7 @@ window.setCheck = (type, key, ck, val) => {
     if(!s.items.some(i=>i.k===ck)) return;
     const e = currentSession[arr][key];
     const secOk = s.items.filter(i=>(e.checks||{})[i.k]==='ok').length;
-    const secTot = s.items.filter(i=>(e.checks||{})[i.k]!==null&&(e.checks||{})[i.k]!=='na').length;
+    const secTot = s.items.filter(i=>answered((e.checks||{})[i.k])).length;
     const pct = secTot>0 ? Math.round(secOk/secTot*100) : null;
     const sid = `s_${key}_${s.sec.replace(/\W/g,'_')}`;
     const chevEl = document.getElementById('chev_'+sid);
@@ -1130,14 +1161,16 @@ window.setMeasure = (type, key, mk, val) => {
   // Re-render if select changed (show/hide fields)
   if(mk==='conduta'||mk==='motor') { renderInspection(); return; }
   // Live update computed fields
-  const m = currentSession[arr][key].measures;
+  const e = currentSession[arr][key];
+  const m = e.measures;
   const isCircular = (m.conduta||'Retangular') === 'Circular';
   const isMono = (m.motor||'Trifásico 400V') === 'Monofásico 230V';
   const vel=parseFloat(m.vel)||0, larg=parseFloat(m.larg)||0, alt=parseFloat(m.alt)||0, diam=parseFloat(m.diam)||0;
   const caudal_m3s = isCircular ? (vel>0&&diam>0?vel*Math.PI*Math.pow(diam/100/2,2):0) : (vel>0&&larg>0&&alt>0?vel*(larg/100)*(alt/100):0);
   const caudal_m3h = caudal_m3s>0 ? Math.round(caudal_m3s*3600) : null;
   const tsaida=parseFloat(m.tsaida), tentrada=parseFloat(m.tentrada);
-  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? tentrada-tsaida : null;
+  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? Math.abs(tentrada-tsaida) : null;
+  const modoT = deltaT ? (tsaida>tentrada?' · aquecimento':' · arrefecimento') : '';
   const pterm = (caudal_m3s>0&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
   const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const V=isMono?230:400;
@@ -1148,10 +1181,12 @@ window.setMeasure = (type, key, mk, val) => {
   const efic_nom = (pterm_nom&&pelec_nom&&pelec_nom>0) ? +(pterm_nom/pelec_nom).toFixed(2) : null;
   const upd = (id,val,unit) => { const el=document.getElementById(id+'_'+key); if(el&&val!==null) el.textContent=val+(unit?' '+unit:''); };
   upd('caudal', caudal_m3h, 'm³/h');
-  upd('dt', deltaT!==null?deltaT.toFixed(1):null, '°C');
+  upd('dt', deltaT!==null?deltaT.toFixed(1):null, '°C'+modoT);
   upd('pterm', pterm, 'kW');
   upd('pelec', pelec, 'kW');
   upd('efic', efic, '');
+  // Atualizar o resumo de caudais ao vivo
+  if(type==='uta') { const sb=document.getElementById('s_caudais_sum'); if(sb) sb.innerHTML=caudaisRows(eqEntries(currentSession.utas)); }
 };
 
 window.setNote = (type, key, val) => {
@@ -1166,6 +1201,7 @@ window.setPower = (k, val) => {
   if(!currentSession.power) currentSession.power={};
   currentSession.power[k]=val;
   scheduleSave(dbPath(`power/${k}`), val);
+  updatePowerTotal();
 };
 
 function typeToArr(t) { return {uta:'utas',chiller:'chillers',bomba:'bombas',vaso:'vasos',vrv:'vrvs',quadro:'quadros'}[t]; }
@@ -1272,11 +1308,11 @@ window.showReport = () => {
     <div class="rpt-row"><span>Data</span><span>${s.meta?.data||'—'}</span></div>
     <div class="rpt-row"><span>Auditor</span><span>${localStorage.getItem('avac_display_name')||'—'}</span></div>
   </div>`;
-  const allEqs=[...Object.values(s.utas||{}),...Object.values(s.chillers||{}),...Object.values(s.bombas||{}),...Object.values(s.vasos||{}),...Object.values(s.vrvs||{}),...Object.values(s.quadros||{})];
+  const allEqs=[...eqValues(s.utas),...eqValues(s.chillers),...eqValues(s.bombas),...eqValues(s.vasos),...eqValues(s.vrvs),...eqValues(s.quadros)];
   const allSecs=[...UTA_CHECKS,...CHILLER_CHECKS,...BOMBA_CHECKS,...VASO_CHECKS,...VRV_CHECKS,...QUADRO_CHECKS];
   const itemMap={}; allSecs.forEach(sec=>sec.items.forEach(i=>itemMap[i.k]=i.l));
   const noks=[];
-  allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${e.name}: ${itemMap[k]||k}`);}));
+  allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${eqLabel(e)}: ${itemMap[k]||k}`);}));
   if(noks.length){
     html+=`<div class="report-section"><h3 style="color:var(--nok)">⚠ Não conformidades (${noks.length})</h3>`;
     noks.forEach(n=>html+=`<div class="nok-item">${n}</div>`);
@@ -1288,25 +1324,23 @@ window.showReport = () => {
     Object.values(e.checks||{}).forEach(v=>{if(v==='ok'){eOk++;eTot++;}else if(v==='nok')eTot++;});
     const ep=eTot>0?Math.round(eOk/eTot*100):null;
     const ec=ep===null?'var(--text3)':ep===100?'var(--ok)':ep>=75?'var(--warn)':'var(--nok)';
-    html+=`<div class="rpt-row"><span>${e.name}${e.marca?` <span style="color:var(--text3);font-size:11px">${e.marca} ${e.modelo}</span>`:''}</span><span style="font-weight:700;color:${ec}">${ep!==null?ep+'%':'—'}</span></div>`;
+    html+=`<div class="rpt-row"><span>${esc(eqLabel(e))}${e.marca?` <span style="color:var(--text3);font-size:11px">${e.marca} ${e.modelo}</span>`:''}</span><span style="font-weight:700;color:${ec}">${ep!==null?ep+'%':'—'}</span></div>`;
   });
   html+='</div>';
-  const eqsEff=Object.values(s.utas||{}).filter(e=>{const m=e.measures||{};return(m.vel&&m.larg&&m.alt)||e.nominal;});
+  const eqsEff=eqValues(s.utas).filter(e=>{const uc=utaCalc(e);return uc.caudal||uc.dt!==null||uc.pelec||e.nominal;});
   if(eqsEff.length){
     html+=`<div class="report-section"><h3>Desempenho energético</h3>`;
     eqsEff.forEach(e=>{
-      const m=e.measures||{},n=e.nominal;
-      const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0;
-      const c=v&&l&&a?Math.round(v*(l/100)*(a/100)*3600):null;
-      const p=parseFloat(m.pelec)||0;
-      const eer=n?.potencia_termica_kw&&p?(n.potencia_termica_kw/p).toFixed(2):null;
-      const dt=m.tconduta&&m.tambiente?(parseFloat(m.tambiente)-parseFloat(m.tconduta)).toFixed(1):null;
-      html+=`<div class="eff-block"><div class="eff-title">${e.name}${e.marca?' — '+e.marca+' '+e.modelo:''}</div><div class="eff-grid">`;
+      const n=e.nominal, uc=utaCalc(e);
+      const c=uc.caudal, eer=uc.efic, dt=uc.dt!==null?uc.dt.toFixed(1):null;
+      html+=`<div class="eff-block"><div class="eff-title">${esc(eqLabel(e))}${e.marca?' — '+esc(e.marca)+' '+esc(e.modelo):''}</div><div class="eff-grid">`;
       if(c) html+=`<div class="eff-item">Caudal real<span>${c} m³/h</span></div>`;
       if(n?.caudal_m3h) html+=`<div class="eff-item">Caudal nominal<span>${n.caudal_m3h} m³/h</span></div>`;
-      if(eer) html+=`<div class="eff-item">EER real<span>${eer}</span></div>`;
+      if(uc.pterm!==null) html+=`<div class="eff-item">Pot. térmica<span>${uc.pterm} kW</span></div>`;
+      if(uc.pelec!==null) html+=`<div class="eff-item">Pot. elétrica<span>${uc.pelec} kW</span></div>`;
+      if(eer) html+=`<div class="eff-item">Eficiência real (Pt/Pe)<span>${eer}</span></div>`;
       if(n?.eer_nominal) html+=`<div class="eff-item">EER nominal<span>${n.eer_nominal}</span></div>`;
-      if(dt) html+=`<div class="eff-item">ΔT conduta<span>${dt} °C</span></div>`;
+      if(dt) html+=`<div class="eff-item">ΔT |entrada−saída|<span>${dt} °C${uc.modo?' · '+uc.modo:''}</span></div>`;
       html+='</div></div>';
     });
     html+='</div>';
@@ -1317,7 +1351,7 @@ window.showReport = () => {
     POWER_FIELDS.forEach(f=>{if((s.power||{})[f.k])html+=`<div class="rpt-row"><span>${f.l}</span><span>${parseFloat(s.power[f.k]).toFixed(1)} kW</span></div>`;});
     html+=`<div class="rpt-row" style="font-weight:700"><span>Total</span><span>${pwTotal.toFixed(1)} kW</span></div></div>`;
   }
-  allEqs.filter(e=>e.note).forEach(e=>{html+=`<div class="report-section"><h3>Notas — ${e.name}</h3><p style="font-size:13px;line-height:1.5">${e.note}</p></div>`;});
+  allEqs.filter(e=>e.note).forEach(e=>{html+=`<div class="report-section"><h3>Notas — ${esc(eqLabel(e))}</h3><p style="font-size:13px;line-height:1.5;white-space:pre-wrap">${esc(e.note)}</p></div>`;});
   document.getElementById('reportBody').innerHTML=html;
   showPage('pgReport');
 };
@@ -1332,15 +1366,15 @@ window.exportJSON = () => {
 
 window.exportText = () => {
   const s=currentSession;const {ok,tot,pct}=calcScoreFromSession(s);
-  const allEqs=[...Object.values(s.utas||{}),...Object.values(s.chillers||{}),...Object.values(s.bombas||{}),...Object.values(s.vasos||{}),...Object.values(s.vrvs||{}),...Object.values(s.quadros||{})];
+  const allEqs=[...eqValues(s.utas),...eqValues(s.chillers),...eqValues(s.bombas),...eqValues(s.vasos),...eqValues(s.vrvs),...eqValues(s.quadros)];
   const allSecs=[...UTA_CHECKS,...CHILLER_CHECKS,...BOMBA_CHECKS,...VASO_CHECKS,...VRV_CHECKS,...QUADRO_CHECKS];
   const itemMap={};allSecs.forEach(sc=>sc.items.forEach(i=>itemMap[i.k]=i.l));
   let txt=`RELATÓRIO DE INSPEÇÃO AVAC\n${'='.repeat(40)}\n`;
-  txt+=`Instalação: ${s.meta?.loja||'—'}\nData: ${s.meta?.data||'—'}\nAuditor: ${currentUser?.displayName||'—'}\n`;
+  txt+=`Instalação: ${s.meta?.loja||'—'}\nData: ${s.meta?.data||'—'}\nAuditor: ${localStorage.getItem('avac_display_name')||currentUser?.displayName||'—'}\n`;
   txt+=`Resultado global: ${pct}% (${ok}/${tot} pontos)\n\n`;
-  const noks=[];allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${e.name}: ${itemMap[k]||k}`);}));
+  const noks=[];allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${eqLabel(e)}: ${itemMap[k]||k}`);}));
   if(noks.length){txt+=`NÃO CONFORMIDADES (${noks.length}):\n`;noks.forEach(n=>txt+=`  ✗ ${n}\n`);txt+='\n';}
-  allEqs.forEach(e=>{let eOk=0,eTot=0;Object.values(e.checks||{}).forEach(v=>{if(v==='ok'){eOk++;eTot++;}else if(v==='nok')eTot++;});const ep=eTot>0?Math.round(eOk/eTot*100):null;txt+=`${e.name}${e.marca?' ('+e.marca+' '+e.modelo+')':''}: ${ep!==null?ep+'%':'—'}\n`;if(e.note)txt+=`  Notas: ${e.note}\n`;});
+  allEqs.forEach(e=>{let eOk=0,eTot=0;Object.values(e.checks||{}).forEach(v=>{if(v==='ok'){eOk++;eTot++;}else if(v==='nok')eTot++;});const ep=eTot>0?Math.round(eOk/eTot*100):null;txt+=`${eqLabel(e)}${e.marca?' ('+e.marca+' '+e.modelo+')':''}: ${ep!==null?ep+'%':'—'}\n`;if(e.note)txt+=`  Notas: ${e.note}\n`;});
   const blob=new Blob([txt],{type:'text/plain'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`avac_${(s.meta?.loja||'insp').replace(/\s/g,'_')}.txt`;a.click();URL.revokeObjectURL(url);
   showToast('Texto exportado','ok');
 };
@@ -1491,7 +1525,7 @@ function updateSectionPct(type, key) {
     const pctEl = document.querySelector(`#chev_${sid}`)?.parentElement?.querySelector('.section-pct');
     if(!pctEl) return;
     const secOk=s.items.filter(i=>(e.checks||{})[i.k]==='ok').length;
-    const secTot=s.items.filter(i=>(e.checks||{})[i.k]!==null&&(e.checks||{})[i.k]!=='na').length;
+    const secTot=s.items.filter(i=>answered((e.checks||{})[i.k])).length;
     const pct=secTot>0?Math.round(secOk/secTot*100):null;
     if(pct!==null){
       pctEl.textContent=pct+'%';
@@ -1503,13 +1537,13 @@ function updateSectionPct(type, key) {
 function updateChips() {
   const groups = {uta:'utas',chiller:'chillers',bomba:'bombas',vaso:'vasos',vrv:'vrvs',quadro:'quadros'};
   Object.entries(groups).forEach(([type,arr]) => {
-    const list = Object.entries(currentSession[arr]||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+    const list = eqEntries(currentSession[arr]);
     list.forEach(([key,e],i) => {
       const chip = document.querySelector(`.eq-chip[onclick="switchEq('${type}',${i})"]`);
       if(!chip) return;
       const vals = Object.values(e.checks||{});
       const hasNok = vals.some(v=>v==='nok');
-      const complete = vals.length>0 && vals.every(v=>v!==null);
+      const complete = eqComplete(e,type);
       const ai = activeIdxs[type]||0;
       chip.className = i===ai?'eq-chip active':hasNok?'eq-chip hasnok':complete?'eq-chip complete':'eq-chip';
     });
@@ -1675,9 +1709,9 @@ window.exportDOCX = async () => {
   children.push(par(''));
 
   // NOKs section
-  const allEqs = [...Object.values(s.utas||{}),...Object.values(s.chillers||{}),...Object.values(s.bombas||{}),...Object.values(s.vasos||{}),...Object.values(s.vrvs||{}),...Object.values(s.quadros||{})];
+  const allEqs = [...eqValues(s.utas),...eqValues(s.chillers),...eqValues(s.bombas),...eqValues(s.vasos),...eqValues(s.vrvs),...eqValues(s.quadros)];
   const noks = [];
-  allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${e.name}: ${itemMap[k]||k}`);}));
+  allEqs.forEach(e=>Object.entries(e.checks||{}).forEach(([k,v])=>{if(v==='nok')noks.push(`${eqLabel(e)}: ${itemMap[k]||k}`);}));
 
   if(noks.length) {
     children.push(par([txt('NÃO CONFORMIDADES',{bold:true,size:22,color:'c0392b'})],{before:160,after:80}));
@@ -1695,7 +1729,7 @@ window.exportDOCX = async () => {
   children.push(par([txt('DETALHE POR EQUIPAMENTO',{bold:true,size:22,color:'4D4D4D'})],{before:160,after:80}));
 
   const renderEqSection = async (eqMap, secChecks, label) => {
-    const list = Object.values(eqMap||{});
+    const list = eqValues(eqMap);
     if(!list.length) return;
 
     for(const e of list) {
@@ -1763,14 +1797,14 @@ window.exportDOCX = async () => {
       const q_m3h=q_m3s>0?Math.round(q_m3s*3600):null;
       const ts=m.tsaida!==undefined&&m.tsaida!==''?parseFloat(m.tsaida):NaN;
       const te=m.tentrada!==undefined&&m.tentrada!==''?parseFloat(m.tentrada):NaN;
-      const dt=(!isNaN(ts)&&!isNaN(te))?+(te-ts).toFixed(1):null;
+      const dt=(!isNaN(ts)&&!isNaN(te))?+Math.abs(te-ts).toFixed(1):null;
       const pterm=q_m3s>0&&dt!==null?+(q_m3s*1.225*1.006*dt*1.1).toFixed(2):null;
       const corr=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
       const V=isMono?230:400;
       const pelec=corr>0&&fp>0?+((isMono?1:Math.sqrt(3))*V*corr*fp/1000).toFixed(2):null;
       const efic=pterm&&pelec&&pelec>0?+(pterm/pelec).toFixed(2):null;
       if(q_m3h) measRows.push(['Caudal', q_m3h+' m³/h']);
-      if(dt!==null) measRows.push(['ΔT (entrada−saída)', dt+' °C']);
+      if(dt!==null) measRows.push(['ΔT |entrada−saída|', dt+' °C'+(dt?(ts>te?' · aquecimento':' · arrefecimento'):'')]);
       if(pterm) measRows.push(['Pot. térmica (ar húmido)', pterm+' kW']);
       if(pelec) measRows.push(['Pot. elétrica', pelec+' kW']);
       if(efic) measRows.push(['Eficiência (Pt/Pe)', String(efic)]);
