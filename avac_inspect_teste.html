@@ -376,12 +376,13 @@ const utaCalc = e => { const m=(e&&e.measures)||{};
   const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0,d=parseFloat(m.diam)||0;
   const q=circ?(v>0&&d>0?v*Math.PI*Math.pow(d/100/2,2):0):(v>0&&l>0&&a>0?v*(l/100)*(a/100):0);
   const ts=m.tsaida!==undefined&&m.tsaida!==''?parseFloat(m.tsaida):NaN, te=m.tentrada!==undefined&&m.tentrada!==''?parseFloat(m.tentrada):NaN;
-  const dt=(!isNaN(ts)&&!isNaN(te))?+(te-ts).toFixed(1):null;
+  const dt=(!isNaN(ts)&&!isNaN(te))?+Math.abs(te-ts).toFixed(1):null;
+  const modo=dt?(ts>te?'aquecimento':'arrefecimento'):'';
   const pterm=(q>0&&dt!==null)?+(q*1.225*1.006*dt*1.1).toFixed(2):null;
   const I=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const pelec=(I>0&&fp>0)?+((mono?1:Math.sqrt(3))*(mono?230:400)*I*fp/1000).toFixed(2):null;
   const efic=(pterm&&pelec&&pelec>0)?+(pterm/pelec).toFixed(2):null;
-  return {caudal:q>0?Math.round(q*3600):null, dt, pterm, pelec, efic}; };
+  return {caudal:q>0?Math.round(q*3600):null, dt, modo, pterm, pelec, efic}; };
 // Nº de pontos de verificação por tipo e estado "completo"
 const checksOf = type => ({uta:UTA_CHECKS,chiller:CHILLER_CHECKS,bomba:BOMBA_CHECKS,vaso:VASO_CHECKS,vrv:VRV_CHECKS,quadro:QUADRO_CHECKS}[type]||[]);
 const eqComplete = (e,type) => { const items=checksOf(type).flatMap(sc=>sc.items); const c=e.checks||{};
@@ -981,7 +982,8 @@ function measuresHTML(e, fields, type, key) {
   const caudal_m3h = caudal_m3s>0 ? Math.round(caudal_m3s*3600) : null;
   const tsaida = m.tsaida!==undefined&&m.tsaida!=='' ? parseFloat(m.tsaida) : NaN;
   const tentrada = m.tentrada!==undefined&&m.tentrada!=='' ? parseFloat(m.tentrada) : NaN;
-  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? +(tentrada-tsaida).toFixed(1) : null;
+  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? +Math.abs(tentrada-tsaida).toFixed(1) : null;
+  const modoT = deltaT ? (tsaida>tentrada?' · aquecimento':' · arrefecimento') : '';
   const pterm = (caudal_m3s>0&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
   const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const V = isMono ? 230 : 400;
@@ -1025,7 +1027,7 @@ function measuresHTML(e, fields, type, key) {
     // After temp entrada → ΔT + potência térmica
     if(f.k==='tentrada') {
       return row
-        + (deltaT!==null ? computedRow('dt','ΔT (entrada−saída)',deltaT.toFixed(1),'°C') : '')
+        + (deltaT!==null ? computedRow('dt','ΔT |entrada−saída|',deltaT.toFixed(1),'°C'+modoT) : '')
         + computedRow('pterm','Pot. térmica (ar húmido)',pterm,'kW');
     }
     // After FP → potência elétrica + eficiência
@@ -1167,7 +1169,8 @@ window.setMeasure = (type, key, mk, val) => {
   const caudal_m3s = isCircular ? (vel>0&&diam>0?vel*Math.PI*Math.pow(diam/100/2,2):0) : (vel>0&&larg>0&&alt>0?vel*(larg/100)*(alt/100):0);
   const caudal_m3h = caudal_m3s>0 ? Math.round(caudal_m3s*3600) : null;
   const tsaida=parseFloat(m.tsaida), tentrada=parseFloat(m.tentrada);
-  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? tentrada-tsaida : null;
+  const deltaT = (!isNaN(tsaida)&&!isNaN(tentrada)) ? Math.abs(tentrada-tsaida) : null;
+  const modoT = deltaT ? (tsaida>tentrada?' · aquecimento':' · arrefecimento') : '';
   const pterm = (caudal_m3s>0&&deltaT!==null) ? +(caudal_m3s*1.225*1.006*deltaT*1.1).toFixed(2) : null;
   const corrente=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
   const V=isMono?230:400;
@@ -1178,7 +1181,7 @@ window.setMeasure = (type, key, mk, val) => {
   const efic_nom = (pterm_nom&&pelec_nom&&pelec_nom>0) ? +(pterm_nom/pelec_nom).toFixed(2) : null;
   const upd = (id,val,unit) => { const el=document.getElementById(id+'_'+key); if(el&&val!==null) el.textContent=val+(unit?' '+unit:''); };
   upd('caudal', caudal_m3h, 'm³/h');
-  upd('dt', deltaT!==null?deltaT.toFixed(1):null, '°C');
+  upd('dt', deltaT!==null?deltaT.toFixed(1):null, '°C'+modoT);
   upd('pterm', pterm, 'kW');
   upd('pelec', pelec, 'kW');
   upd('efic', efic, '');
@@ -1337,7 +1340,7 @@ window.showReport = () => {
       if(uc.pelec!==null) html+=`<div class="eff-item">Pot. elétrica<span>${uc.pelec} kW</span></div>`;
       if(eer) html+=`<div class="eff-item">Eficiência real (Pt/Pe)<span>${eer}</span></div>`;
       if(n?.eer_nominal) html+=`<div class="eff-item">EER nominal<span>${n.eer_nominal}</span></div>`;
-      if(dt) html+=`<div class="eff-item">ΔT (entrada−saída)<span>${dt} °C</span></div>`;
+      if(dt) html+=`<div class="eff-item">ΔT |entrada−saída|<span>${dt} °C${uc.modo?' · '+uc.modo:''}</span></div>`;
       html+='</div></div>';
     });
     html+='</div>';
@@ -1794,14 +1797,14 @@ window.exportDOCX = async () => {
       const q_m3h=q_m3s>0?Math.round(q_m3s*3600):null;
       const ts=m.tsaida!==undefined&&m.tsaida!==''?parseFloat(m.tsaida):NaN;
       const te=m.tentrada!==undefined&&m.tentrada!==''?parseFloat(m.tentrada):NaN;
-      const dt=(!isNaN(ts)&&!isNaN(te))?+(te-ts).toFixed(1):null;
+      const dt=(!isNaN(ts)&&!isNaN(te))?+Math.abs(te-ts).toFixed(1):null;
       const pterm=q_m3s>0&&dt!==null?+(q_m3s*1.225*1.006*dt*1.1).toFixed(2):null;
       const corr=parseFloat(m.corrente)||0, fp=parseFloat(m.fp)||0;
       const V=isMono?230:400;
       const pelec=corr>0&&fp>0?+((isMono?1:Math.sqrt(3))*V*corr*fp/1000).toFixed(2):null;
       const efic=pterm&&pelec&&pelec>0?+(pterm/pelec).toFixed(2):null;
       if(q_m3h) measRows.push(['Caudal', q_m3h+' m³/h']);
-      if(dt!==null) measRows.push(['ΔT (entrada−saída)', dt+' °C']);
+      if(dt!==null) measRows.push(['ΔT |entrada−saída|', dt+' °C'+(dt?(ts>te?' · aquecimento':' · arrefecimento'):'')]);
       if(pterm) measRows.push(['Pot. térmica (ar húmido)', pterm+' kW']);
       if(pelec) measRows.push(['Pot. elétrica', pelec+' kW']);
       if(efic) measRows.push(['Eficiência (Pt/Pe)', String(efic)]);
