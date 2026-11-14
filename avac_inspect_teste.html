@@ -363,10 +363,8 @@ let currentSessionId = null;
 let currentSession = null;
 let dbListener = null;
 let activeIdxs = {uta:0,chiller:0,bomba:0,vaso:0,vrv:0,quadro:0};
-// ── ORDENAÇÃO DE EQUIPAMENTOS (só apresentação; não altera dados) ──
-// Chaves antigas: "uta3" → 3 ; chaves novas: "uta<timestamp>_4" → 4
-const eqOrd = k => { const m=/_(\d+)$/.exec(k)||/(\d+)$/.exec(k); return m?parseInt(m[1],10):1e9; };
-const eqEntries = map => Object.entries(map||{}).sort((a,b)=>(eqOrd(a[0])-eqOrd(b[0]))||a[0].localeCompare(b[0]));
+// ── LISTAS DE EQUIPAMENTOS: mesma ordem (por chave) em separadores, resumo e relatórios ──
+const eqEntries = map => Object.entries(map||{}).sort((a,b)=>a[0].localeCompare(b[0]));
 const eqValues = map => eqEntries(map).map(([,e])=>e);
 // Escape para atributos/HTML (evita truncar valores com aspas, ex.: 24")
 const esc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
