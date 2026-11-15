@@ -257,7 +257,8 @@ body{overflow-x:hidden}
   <div class="setup-form">
     <div class="field-group">
       <label>Instalação / Loja</label>
-      <input type="text" id="sLoja" placeholder="ex: Zara Loures Shopping">
+      <input type="text" id="sLoja" placeholder="ex: Zara Loures Shopping" oninput="sugerirModelo()" autocomplete="off">
+      <div id="newHist" style="display:none;font-size:12px;color:var(--text2);padding-top:8px"></div>
     </div>
     <div class="field-group">
       <label>Data</label>
@@ -477,6 +478,83 @@ window.aceitarSugestao = (type, key, campo, valor, ehMedicao) => {
 const caudalM3h = m => { m=m||{}; const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0,d=parseFloat(m.diam)||0;
   const q=(m.conduta||'Retangular')==='Circular'?(v>0&&d>0?v*Math.PI*Math.pow(d/100/2,2):0):(v>0&&l>0&&a>0?v*(l/100)*(a/100):0);
   return q>0?Math.round(q*3600):null; };
+// ── NOVA INSPEÇÃO A PARTIR DO HISTÓRICO: nº, tipo e nomes das máquinas ──────
+const TIPOS_EQ = [['uta','utas'],['chiller','chillers'],['bomba','bombas'],['vaso','vasos'],['vrv','vrvs'],['quadro','quadros']];
+const TIPO_ABR = {uta:'UTA',chiller:'chiller',bomba:'bomba',vaso:'vaso',vrv:'VRV',quadro:'quadro'};
+let _novoModelo = null, _novoOpts = [];
+// Lista oficial de lojas (users/<uid>/lojasInditex, importada do Lista_das_Lojas.xlsm) — só para nome, código e localização
+let LOJAS = null, _lojaOpts = [], _lojaEscolhida = null;
+async function loadLojas() {
+  if(LOJAS) return LOJAS;
+  try { const sn = await get(ref(db, `users/${currentUser.uid}/lojasInditex/lojas`)); LOJAS = sn.val() || {}; } catch(e) { LOJAS = {}; }
+  return LOJAS;
+}
+const lojaNomeExib = L => `${L.k} ${L.n} (${L.c})`;
+function procurarLojas(q) {
+  const qt = _tok(q); if(!qt.length || !LOJAS) return [];
+  return Object.values(LOJAS).map(L=>{
+    const t = _tok(`${L.k} ${L.n} ${L.c} ${L.loc}`);
+    const hit = qt.filter(x=>t.some(y=>y===x || (x.length>=3 && y.startsWith(x)))).length;
+    return {L, sc: hit/qt.length - (/fechad/i.test(L.s)?0.5:0)};
+  }).filter(x=>x.sc>=0.99 || (qt.length>1 && x.sc>=0.66)).sort((a,b)=>b.sc-a.sc || a.L.n.length-b.L.n.length).slice(0,3).map(x=>x.L);
+}
+window.usarLoja = i => { const L=_lojaOpts[i]; if(!L) return; _lojaEscolhida=L;
+  document.getElementById('sLoja').value = lojaNomeExib(L); sugerirModelo(); };
+window.naoUsarLoja = () => { _lojaEscolhida=null; sugerirModelo(); };
+function aplicarLoja(session) {
+  const L=_lojaEscolhida; _lojaEscolhida=null; if(!L) return;
+  session.meta.codigoLoja = L.c;
+  if(!session.meta.localizacao) session.meta.localizacao = L.loc || L.m || '';
+}
+function modelosLoja(q) {
+  const qt = new Set(_tok(q)); if(!qt.size) return [];
+  const out = [], porLoja = new Map();
+  Object.values(_allSessions||{}).forEach(ss=>{ if(!ss?.meta?.loja) return;
+    const t=_tok(ss.meta.loja); const sc=t.filter(x=>qt.has(x)).length/Math.max(1,t.length); if(!sc) return;
+    const k=_noAcc(ss.meta.loja).trim(), prev=porLoja.get(k);
+    if(!prev || String(ss.meta.data||'')>String(prev.ss.meta.data||'')) porLoja.set(k,{ss,sc}); });
+  porLoja.forEach(({ss,sc})=>{ const tipos={};
+    TIPOS_EQ.forEach(([t,col])=>{ tipos[t]=eqEntries(ss[col]).map(([,e])=>({nome:e.nome||'', histEq:e.histEq||''})); });
+    const top=histLojaSugestoes(ss.meta)[0];
+    out.push({fonte:'app', titulo:ss.meta.loja, data:ss.meta.data||'', sc:sc+0.001, histLoja:ss.meta.histLoja||(top&&top.sc===1?top.id:''), tipos}); });
+  const usados = new Set(out.map(o=>o.histLoja).filter(Boolean));
+  histLojaSugestoes({loja:q}).forEach(({id,L,sc})=>{ if(usados.has(id)) return;
+    const vis=Object.values(L.visitas||{}).sort((a,b)=>String(b.data).localeCompare(String(a.data)))[0]; if(!vis) return;
+    const tipos={uta:[],chiller:[]};
+    Object.values(vis.eq||{}).forEach(x=>{ tipos[/chiller|^ch\s*\d/i.test(x.nome)?'chiller':'uta'].push({nome:x.nome, histEq:x.nome}); });
+    out.push({fonte:'rel', titulo:L.nomeExib||L.nome, data:vis.data||'', sc, histLoja:id, tipos, nVis:Object.keys(L.visitas||{}).length}); });
+  return out.sort((a,b)=>b.sc-a.sc).slice(0,4);
+}
+const _resumoTipos = tipos => TIPOS_EQ.map(([t])=>(tipos[t]||[]).length?`${(tipos[t]||[]).length} ${TIPO_ABR[t]}`:'').filter(Boolean).join(', ');
+window.sugerirModelo = () => {
+  const box=document.getElementById('newHist'); if(!box) return;
+  const qv=document.getElementById('sLoja').value;
+  let lojaHTML='';
+  if(_lojaEscolhida) lojaHTML=`<span class="hist-note">🏬 ${esc(lojaNomeExib(_lojaEscolhida))}${_lojaEscolhida.loc?' · '+esc(_lojaEscolhida.loc):''}${/fechad/i.test(_lojaEscolhida.s)?' · ⚠ fechada na lista (2018)':''}</span> <button class="hist-chip" onclick="naoUsarLoja()">não usar</button><br>`;
+  else { _lojaOpts=procurarLojas(qv); if(_lojaOpts.length) lojaHTML='🏬 Lista de lojas:<br>'+_lojaOpts.map((L,i)=>`<button class="hist-chip" onclick="usarLoja(${i})">${esc(lojaNomeExib(L))}${L.loc?' · '+esc(L.loc):''}${/fechad/i.test(L.s)?' · fechada':''}</button>`).join('')+'<br>'; }
+  box.innerHTML=''; box.style.display = lojaHTML ? '' : 'none';
+  const _set = h => { box.style.display=(lojaHTML||h)?'':'none'; box.innerHTML = lojaHTML + h; };
+  if(_novoModelo) { const M=_novoModelo;
+    const nomes=TIPOS_EQ.flatMap(([t])=>(M.tipos[t]||[]).map(x=>x.nome).filter(Boolean));
+    _set(`<span class="hist-note">📚 Máquinas como em <b>${esc(M.titulo)}</b> (${M.fonte==='app'?'inspeção':'relatório'} ${_mesAno(M.data)}): ${esc(_resumoTipos(M.tipos))}${nomes.length?' — '+esc(nomes.slice(0,14).join(', '))+(nomes.length>14?'…':''):''}. Já fica ligado ao histórico.</span> <button class="hist-chip" onclick="naoUsarModelo()">não usar</button>`);
+    return; }
+  _novoOpts = modelosLoja(qv);
+  if(!_novoOpts.length) { _set(''); return; }
+  _set('📚 Já inspecionada? Toca para criar as mesmas máquinas:<br>'+_novoOpts.map((o,i)=>`<button class="hist-chip" onclick="usarModelo(${i})">${esc(o.titulo)} · ${o.fonte==='app'?'inspeção':'relatório'} ${_mesAno(o.data)} · ${esc(_resumoTipos(o.tipos))}</button>`).join(''));
+};
+window.usarModelo = i => { const M=_novoOpts[i]; if(!M) return; _novoModelo=M;
+  if(!_lojaEscolhida) document.getElementById('sLoja').value = M.titulo;
+  const counts={};
+  SYSTEMS.forEach(s=>{ const n=(M.tipos[s.key]||[]).length; counts[s.key] = M.fonte==='app' ? Math.min(n,s.max) : (s.key==='quadro' ? 1 : Math.min(n,s.max)); });
+  renderCounterGrid('counterGrid', counts, 'newCount'); sugerirModelo(); };
+window.naoUsarModelo = () => { _novoModelo=null; renderCounterGrid('counterGrid', {uta:2,chiller:0,bomba:0,vaso:0,vrv:0,quadro:1}, 'newCount'); sugerirModelo(); };
+function aplicarModelo(session) {
+  const M=_novoModelo; _novoModelo=null; if(!M) return;
+  if(M.histLoja) session.meta.histLoja = M.histLoja;
+  TIPOS_EQ.forEach(([t,col])=>{ const lst=M.tipos[t]||[];
+    Object.keys(session[col]||{}).sort((a,b)=>a.localeCompare(b)).forEach((k,i)=>{ const x=lst[i]; if(!x) return;
+      if(x.nome) session[col][k].nome=x.nome; if(x.histEq) session[col][k].histEq=x.histEq; }); });
+}
 let newCounts = {};
 let autoSaveTimer = null;
 
@@ -726,6 +804,7 @@ async function loadSessions() {
 };
 
 window.showNewSession = () => {
+  _novoModelo = null; _lojaEscolhida = null; Promise.all([loadHist(), loadLojas()]).then(()=>sugerirModelo());
   document.getElementById('sData').value = new Date().toISOString().split('T')[0];
   const counts = {uta:2,chiller:0,bomba:0,vaso:0,vrv:0,quadro:1};
   renderCounterGrid('counterGrid', counts, 'newCount');
@@ -740,6 +819,7 @@ window.createSession = async () => {
   const counts = {};
   SYSTEMS.forEach(s => { counts[s.key] = parseInt(document.getElementById('newCount_'+s.key)?.textContent || '0'); });
   const session = buildSession(loja, data, counts);
+  aplicarModelo(session); aplicarLoja(session);
   const newRef = push(ref(db, `users/${currentUser.uid}/sessions`));
   await set(newRef, session);
   await openSession(newRef.key);
