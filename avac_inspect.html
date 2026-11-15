@@ -397,7 +397,9 @@ let autoSaveTimer = null;
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 // SHARED ACCOUNT — one Firebase email/pass for the whole team
-const TEAM_EMAIL = 'vitor.ferreira.sgs@gmail.com';
+const TEAM_EMAIL = 'vit.ferreira@gmail.com';
+// Transição: email antigo aceite até a mudança de email da conta estar confirmada
+const LEGACY_EMAIL = 'vitor.ferreira.sgs@gmail.com';
 
 window.signInPass = async () => {
   const name = document.getElementById('authUser').value.trim();
@@ -406,7 +408,12 @@ window.signInPass = async () => {
   if(!pass) { showToast('Introduz o código de acesso','err'); return; }
   document.getElementById('authLabel').textContent = 'A entrar...';
   try {
-    await signInWithEmailAndPassword(auth, TEAM_EMAIL, pass);
+    try {
+      await signInWithEmailAndPassword(auth, TEAM_EMAIL, pass);
+    } catch(e1) {
+      if(e1.code === 'auth/invalid-credential' || e1.code === 'auth/user-not-found' || e1.code === 'auth/wrong-password') await signInWithEmailAndPassword(auth, LEGACY_EMAIL, pass);
+      else throw e1;
+    }
     // store local name since shared account
     localStorage.setItem('avac_display_name', name);
   } catch(e) {
