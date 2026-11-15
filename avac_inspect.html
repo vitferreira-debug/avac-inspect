@@ -1068,10 +1068,15 @@ function histLojaHTML(meta) {
   const opts = Object.entries(HIST.lojas||{}).sort((a,b)=>a[1].nome.localeCompare(b[1].nome))
     .map(([id,X])=>`<option value="${esc(id)}">${esc(X.nomeExib||X.nome)}</option>`).join('');
   if(!opts) return '';
-  return `<div class="hist-box">📚 Ligar ao histórico desta loja:<div style="margin-top:6px">
-    ${sug.map(x=>`<button class="hist-chip" data-id="${esc(x.id)}" onclick="linkHistLoja(this.dataset.id)">${esc(x.L.nomeExib||x.L.nome)} · ${Object.keys(x.L.visitas||{}).length} rel.</button>`).join('')}
-    <select style="max-width:100%;padding:4px 6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:12px" onchange="if(this.value) linkHistLoja(this.value)">
-      <option value="">${sug.length?'outra loja…':'escolher loja…'}</option>${opts}</select></div></div>`;
+  const _info = X => { const ds=Object.values(X.visitas||{}).map(v=>v.data).sort(); return `${ds.length} relatório(s)${ds.length?', último '+_mesAno(ds[ds.length-1]):''}`; };
+  const [s1, ...outras] = sug;
+  return `<div class="hist-box" style="border-left:3px solid var(--accent)">${s1
+    ? `📚 Encontrei relatórios antigos. Será a loja <b>${esc(s1.L.nomeExib||s1.L.nome)}</b> (${_info(s1.L)})?<div style="margin-top:6px">
+    <button class="hist-chip" style="border-style:solid;font-weight:700" data-id="${esc(s1.id)}" onclick="linkHistLoja(this.dataset.id)">✔ Sim, é esta</button></div>
+    ${outras.length?`<div style="margin-top:2px">Ou será: ${outras.map(x=>`<button class="hist-chip" data-id="${esc(x.id)}" onclick="linkHistLoja(this.dataset.id)">${esc(x.L.nomeExib||x.L.nome)}</button>`).join('')}</div>`:''}`
+    : `📚 Não encontrei relatórios antigos com nome parecido. Se esta loja tiver relatórios, escolhe-a aqui:`}
+    <div style="margin-top:4px"><select style="max-width:100%;padding:4px 6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:12px" onchange="if(this.value) linkHistLoja(this.value)">
+      <option value="">${sug.length?'nenhuma destas — escolher outra…':'escolher loja…'}</option>${opts}</select></div></div>`;
 }
 
 function histEqHTML(e, type, key) {
