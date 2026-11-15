@@ -187,6 +187,10 @@ body{overflow-x:hidden}
 .collab-bar{background:var(--accent-dim);border-bottom:1px solid var(--accent);padding:6px 16px;font-size:11px;color:var(--accent-text);display:flex;align-items:center;justify-content:space-between}
 .collab-users{display:flex;gap:4px}
 .collab-chip{padding:2px 8px;background:rgba(56,189,248,.2);border-radius:10px;font-size:10px;color:var(--accent-text)}
+.hist-note{display:block;font-size:11px;color:var(--text3);padding:0 16px 6px;line-height:1.3}
+.hist-note.hist-out{color:var(--warn);font-weight:600}
+.hist-chip{display:inline-block;margin:0 6px 6px 0;padding:3px 9px;border-radius:12px;border:1px dashed var(--accent);color:var(--accent);background:transparent;font-size:12px;cursor:pointer}
+.hist-box{padding:6px 16px 8px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2)}
 </style>
 </head>
 <body>
@@ -388,6 +392,87 @@ const checksOf = type => ({uta:UTA_CHECKS,chiller:CHILLER_CHECKS,bomba:BOMBA_CHE
 const eqComplete = (e,type) => { const items=checksOf(type).flatMap(sc=>sc.items); const c=e.checks||{};
   return items.length>0 && items.every(i=>c[i.k]==='ok'||c[i.k]==='nok'||c[i.k]==='na'); };
 const answered = v => v==='ok'||v==='nok';
+
+// ── HISTÓRICO (relatórios anteriores + inspeções da app) — só leitura ─────────
+let HIST = null;            // users/<uid>/historico  {lojas:{id:{nome,codigo,nomeExib,visitas:{...}}}}
+let _allSessions = {};      // inspeções carregadas na lista (para histórico da app)
+const _histPick = {};       // máquinas em que o utilizador pediu para trocar a associação
+async function loadHist(force) {
+  if(HIST && !force) return HIST;
+  try { const sn = await get(ref(db, `users/${currentUser.uid}/historico`)); HIST = sn.val() || {lojas:{}}; }
+  catch(e) { HIST = {lojas:{}}; }
+  return HIST;
+}
+const _noAcc = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const _STOP = new Set(['de','da','do','das','dos','e','loja','shopping','centro','comercial','the','lj','-']);
+const _tok = s => _noAcc(s).replace(/pull\s*&\s*bear|p\s*&\s*b/g,'pullbear').replace(/[^a-z0-9]+/g,' ').split(' ').filter(t=>t&&!_STOP.has(t));
+const normEq = s => String(s||'').toUpperCase().replace(/[\s_\-.]/g,'').replace(/([A-Z])0+(\d)/g,'$1$2');
+function histLojaSugestoes(meta) {
+  if(!HIST?.lojas) return [];
+  const q = new Set(_tok((meta?.loja||'')+' '+(meta?.localizacao||'')));
+  if(!q.size) return [];
+  return Object.entries(HIST.lojas).map(([id,L])=>{
+    const t=_tok(L.nome+' '+(L.codigo||'')); const sc=t.filter(x=>q.has(x)).length/Math.max(1,t.length);
+    return {id, L, sc};
+  }).filter(x=>x.sc>0).sort((a,b)=>b.sc-a.sc).slice(0,3);
+}
+const _mesAno = d => { const m=/^(\d{4})-(\d{2})/.exec(d||''); return m?['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+m[2]-1]+'/'+m[1].slice(2):''; };
+// Registos históricos de uma máquina: [{data, fonte, v:{...}, flags:{...}, nominal:{...}}], do mais recente
+function histRegistos(e) {
+  const meta = currentSession?.meta || {};
+  const alvo = normEq(e.histEq || e.nome || e.name);
+  const out = [];
+  const L = meta.histLoja && HIST?.lojas?.[meta.histLoja];
+  if(L) Object.values(L.visitas||{}).forEach(vis=>{
+    const eq = Object.values(vis.eq||{}).find(x=>normEq(x.nome)===alvo);
+    if(eq) out.push({data:vis.data, fonte:vis.ptr||vis.ficheiro, v:eq, flags:eq.flags||{}});
+  });
+  const lojaN = _noAcc(meta.loja).trim();
+  Object.entries(_allSessions||{}).forEach(([sid,ss])=>{
+    if(sid===currentSessionId || !ss?.meta) return;
+    const mesma = (meta.histLoja && ss.meta.histLoja===meta.histLoja) || (lojaN && _noAcc(ss.meta.loja).trim()===lojaN)
+      || (meta.histLoja && !ss.meta.histLoja && (()=>{ const t=histLojaSugestoes(ss.meta)[0]; return t && t.id===meta.histLoja && t.sc===1; })());
+    if(!mesma) return;
+    const u = Object.values(ss.utas||{}).find(x=>normEq(x.histEq||x.nome||x.name)===alvo);
+    if(!u) return;
+    const m=u.measures||{}, uc=utaCalc(u), n=x=>{const f=parseFloat(String(x??'').replace(',','.'));return isNaN(f)?undefined:f;};
+    out.push({data:ss.meta.data||'', fonte:'app', flags:{}, nominal:{marca:u.marca,modelo:u.modelo,pterm_nom:u.pterm_nom,pelec_nom:u.pelec_nom},
+      v:{vel:n(m.vel),larg:n(m.larg),alt:n(m.alt),tsaida:n(m.tsaida),tentrada:n(m.tentrada),caudal:uc.caudal??undefined,pterm:uc.pterm??undefined,pelec:uc.pelec??undefined}});
+  });
+  return out.sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+}
+// Nomes de máquinas disponíveis no histórico da loja (para associar com um toque)
+function histNomesLoja() {
+  const meta=currentSession?.meta||{}; const nomes=new Map();
+  const L = meta.histLoja && HIST?.lojas?.[meta.histLoja];
+  if(L) Object.values(L.visitas||{}).forEach(vis=>Object.values(vis.eq||{}).forEach(x=>{ if(!nomes.has(normEq(x.nome))) nomes.set(normEq(x.nome), x.nome); }));
+  return [...nomes.values()];
+}
+const HIST_TOL = {caudal:{rel:0.2}, pterm:{rel:0.2}, pelec:{rel:0.2}, vel:{rel:0.2}, tsaida:{abs:2}, tentrada:{abs:2}, larg:{abs:0}, alt:{abs:0}};
+const HIST_UN = {caudal:'m³/h', pterm:'kW', pelec:'kW', vel:'m/s', tsaida:'°C', tentrada:'°C', larg:'cm', alt:'cm'};
+const _fmt = (x,k) => (k==='caudal' ? Math.round(x).toLocaleString('pt-PT') : String(+(+x).toFixed(2)).replace('.',','));
+// Nota de gama histórica para um campo (k) e valor atual (cur); '' se não houver histórico
+function histNota(recs, k, cur) {
+  const vals = recs.filter(r=>typeof r.v[k]==='number' && r.v[k]!==0 && !r.flags[k]).map(r=>({x:r.v[k], d:r.data}));
+  const ign = recs.filter(r=>typeof r.v[k]==='number' && (r.v[k]===0 || r.flags[k])).length;
+  if(!vals.length) return ign ? `<span class="hist-note">📚 ${ign} registo(s) duvidoso(s) no histórico</span>` : '';
+  const mn=Math.min(...vals.map(v=>v.x)), mx=Math.max(...vals.map(v=>v.x)), ult=vals[0];
+  const gama = mn===mx ? _fmt(mn,k) : `${_fmt(mn,k)}–${_fmt(mx,k)}`;
+  let fora=false, c=parseFloat(String(cur??'').replace(',','.'));
+  if(!isNaN(c) && c!==0) { const t=HIST_TOL[k]||{rel:0.2};
+    fora = t.rel!==undefined ? (c < mn*(1-t.rel) || c > mx*(1+t.rel)) : (c < mn-t.abs || c > mx+t.abs); }
+  return `<span class="hist-note${fora?' hist-out':''}">${fora?'⚠':'📚'} ${gama} ${HIST_UN[k]||''} · ${vals.length} reg.${ult.d?' · últ. '+_mesAno(ult.d):''}${ign?` · ${ign} ignorado(s)`:''}</span>`;
+}
+// Último valor conhecido (para sugestão com toque)
+function histUltimo(recs, k) { const r=recs.find(r=>r.v[k]!==undefined && r.v[k]!==null && r.v[k]!==0 && !r.flags[k]); return r?{x:r.v[k], d:r.data}:null; }
+function histUltimoNominal(recs, k) { const r=recs.find(r=>r.nominal && r.nominal[k]); return r?{x:r.nominal[k], d:r.data}:null; }
+window.linkHistLoja = (id) => { updateMetaField('histLoja', id||''); renderInspection(); };
+window.pickHistEq = (type, key, nome) => { delete _histPick[key]; setMeta(type, key, 'histEq', nome||''); renderInspection(); };
+window.trocarHistEq = (key) => { _histPick[key]=true; renderInspection(); };
+window.aceitarSugestao = (type, key, campo, valor, ehMedicao) => {
+  if(ehMedicao==='1') setMeasure(type, key, campo, String(valor)); else setMeta(type, key, campo, String(valor));
+  renderInspection();
+};
 // Caudal (m³/h) igual ao da ficha: conduta retangular ou circular
 const caudalM3h = m => { m=m||{}; const v=parseFloat(m.vel)||0,l=parseFloat(m.larg)||0,a=parseFloat(m.alt)||0,d=parseFloat(m.diam)||0;
   const q=(m.conduta||'Retangular')==='Circular'?(v>0&&d>0?v*Math.PI*Math.pow(d/100/2,2):0):(v>0&&l>0&&a>0?v*(l/100)*(a/100):0);
@@ -578,6 +663,8 @@ async function loadSessions() {
     get(ref(db, `users/${currentUser.uid}/folders`)),
   ]);
 
+  _allSessions = sessSnap.exists() ? (sessSnap.val() || {}) : {};
+  loadHist();
   const list = document.getElementById('sessionList');
   const totalSessions = sessSnap.exists() ? Object.keys(sessSnap.val()).length : 0;
   document.getElementById('sessionsSubtitle').textContent = `${totalSessions} inspeção(ões)`;
@@ -816,6 +903,7 @@ function renderInspection() {
         <span class="measure-label">Localização</span>
         <input class="measure-input" type="text" value="${esc(lojaInfo.localizacao||'')}" placeholder="ex: Lisboa, LI" style="width:200px" onblur="updateMetaField('localizacao',this.value)">
       </div>
+      ${histLojaHTML(lojaInfo)}
       <div style="padding:9px 16px;border-bottom:1px solid var(--border)">
         <div style="font-size:12px;color:var(--text2);margin-bottom:6px">Problemáticas da loja</div>
         <textarea style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;padding:8px;outline:none;resize:vertical;min-height:80px;font-family:inherit" placeholder="Descreve as problemáticas reportadas pelo responsável de loja..." onblur="updateMetaField('problematicas',this.value)">${esc(lojaInfo.problematicas||'')}</textarea>
@@ -888,6 +976,43 @@ function stripHTML(list, activeI, type, label) {
   return `<div class="eq-strip-wrap"><div class="eq-strip-label">${label}</div><div class="eq-strip">${chips}</div></div>`;
 }
 
+function histLojaHTML(meta) {
+  if(!HIST) { loadHist().then(()=>{ if(currentSession) renderInspection(); }); return ''; }
+  const L = meta.histLoja && HIST.lojas?.[meta.histLoja];
+  if(L) {
+    const ds = Object.values(L.visitas||{}).map(v=>v.data).sort();
+    return `<div class="hist-box">📚 Histórico: <b>${esc(L.nomeExib||L.nome)}</b> · ${ds.length} relatório(s) ${ds.length?'('+_mesAno(ds[0])+(ds.length>1?' a '+_mesAno(ds[ds.length-1]):'')+')':''}
+      <button class="hist-chip" style="margin:0 0 0 6px" onclick="linkHistLoja('')">trocar</button></div>`;
+  }
+  const sug = histLojaSugestoes(meta);
+  const opts = Object.entries(HIST.lojas||{}).sort((a,b)=>a[1].nome.localeCompare(b[1].nome))
+    .map(([id,X])=>`<option value="${esc(id)}">${esc(X.nomeExib||X.nome)}</option>`).join('');
+  if(!opts) return '';
+  return `<div class="hist-box">📚 Ligar ao histórico desta loja:<div style="margin-top:6px">
+    ${sug.map(x=>`<button class="hist-chip" data-id="${esc(x.id)}" onclick="linkHistLoja(this.dataset.id)">${esc(x.L.nomeExib||x.L.nome)} · ${Object.keys(x.L.visitas||{}).length} rel.</button>`).join('')}
+    <select style="max-width:100%;padding:4px 6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:12px" onchange="if(this.value) linkHistLoja(this.value)">
+      <option value="">${sug.length?'outra loja…':'escolher loja…'}</option>${opts}</select></div></div>`;
+}
+
+function histEqHTML(e, type, key) {
+  if(type!=='uta' || !currentSession?.meta?.histLoja || !HIST) return '';
+  const recs = histRegistos(e);
+  const nomes = histNomesLoja();
+  if(recs.length && !_histPick[key]) {
+    return `<div class="hist-note" style="padding:2px 0 6px">📚 ligado a <b>${esc(e.histEq||eqLabel(e))}</b> · ${recs.length} registo(s)
+      <button class="hist-chip" style="margin:0 0 0 6px;padding:1px 7px" onclick="trocarHistEq('${key}')">trocar</button></div>`;
+  }
+  if(!nomes.length) return '';
+  return `<div class="hist-note" style="padding:2px 0 6px">📚 Corresponde a qual máquina dos relatórios anteriores?<div style="margin-top:4px">
+    ${nomes.map(n=>`<button class="hist-chip" data-n="${esc(n)}" onclick="pickHistEq('${type}','${key}',this.dataset.n)">${esc(n)}</button>`).join('')}
+    <button class="hist-chip" style="border-style:solid;color:var(--text3);border-color:var(--border)" onclick="pickHistEq('${type}','${key}','—')">nenhuma</button></div></div>`;
+}
+
+function sugChip(type, key, campo, sug, ehMedicao, un) {
+  if(!sug) return '';
+  return `<button class="hist-chip" data-v="${esc(sug.x)}" onclick="aceitarSugestao('${type}','${key}','${campo}',this.dataset.v,'${ehMedicao?1:0}')">↺ ${esc(String(sug.x).replace('.',','))}${un?' '+un:''}${sug.d?' ('+_mesAno(sug.d)+')':''}</button>`;
+}
+
 function eqMetaHTML(e, type, key) {
   const hasData = e.marca && e.modelo;
   const photos_geral = Array.isArray(e.photos_geral) ? e.photos_geral : (e.photo_geral ? [e.photo_geral] : []);
@@ -900,15 +1025,16 @@ function eqMetaHTML(e, type, key) {
   return `<div class="eq-meta">
     <div class="field-wrap" style="margin-bottom:8px">
       <div class="eq-meta-label">Nome / Referência do equipamento</div>
-      <input type="text" value="${esc(e.nome||'')}" placeholder="ex: CL01, UTA-Armazém..." onblur="setMeta('${type}','${key}','nome',this.value)" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;outline:none">
+      <input type="text" value="${esc(e.nome||'')}" placeholder="ex: CL01, UTA-Armazém..." onblur="setMeta('${type}','${key}','nome',this.value);renderInspection()" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:13px;outline:none">
+    </div>
+    ${histEqHTML(e, type, key)}
+    <div class="eq-meta-grid">
+      <div><div class="eq-meta-label">Marca</div><input type="text" value="${esc(e.marca||'')}" placeholder="ex: Termobrasil" onblur="setMeta('${type}','${key}','marca',this.value)">${!e.marca&&type==='uta'?sugChip(type,key,'marca',histUltimoNominal(histRegistos(e),'marca')):''}</div>
+      <div><div class="eq-meta-label">Modelo</div><input type="text" value="${esc(e.modelo||'')}" placeholder="ex: FAH100" onblur="setMeta('${type}','${key}','modelo',this.value)">${!e.modelo&&type==='uta'?sugChip(type,key,'modelo',histUltimoNominal(histRegistos(e),'modelo')):''}</div>
     </div>
     <div class="eq-meta-grid">
-      <div><div class="eq-meta-label">Marca</div><input type="text" value="${esc(e.marca||'')}" placeholder="ex: Termobrasil" onblur="setMeta('${type}','${key}','marca',this.value)"></div>
-      <div><div class="eq-meta-label">Modelo</div><input type="text" value="${esc(e.modelo||'')}" placeholder="ex: FAH100" onblur="setMeta('${type}','${key}','modelo',this.value)"></div>
-    </div>
-    <div class="eq-meta-grid">
-      <div><div class="eq-meta-label">Pot. térmica nom. (kW)</div><input type="text" inputmode="decimal" value="${esc(e.pterm_nom||'')}" placeholder="ex: 15.5" onblur="setMeta('${type}','${key}','pterm_nom',this.value)"></div>
-      <div><div class="eq-meta-label">Pot. elétrica nom. (kW)</div><input type="text" inputmode="decimal" value="${esc(e.pelec_nom||'')}" placeholder="ex: 4.2" onblur="setMeta('${type}','${key}','pelec_nom',this.value)"></div>
+      <div><div class="eq-meta-label">Pot. térmica nom. (kW)</div><input type="text" inputmode="decimal" value="${esc(e.pterm_nom||'')}" placeholder="ex: 15.5" onblur="setMeta('${type}','${key}','pterm_nom',this.value)">${!e.pterm_nom&&type==='uta'?sugChip(type,key,'pterm_nom',histUltimoNominal(histRegistos(e),'pterm_nom'),false,'kW'):''}</div>
+      <div><div class="eq-meta-label">Pot. elétrica nom. (kW)</div><input type="text" inputmode="decimal" value="${esc(e.pelec_nom||'')}" placeholder="ex: 4.2" onblur="setMeta('${type}','${key}','pelec_nom',this.value)">${!e.pelec_nom&&type==='uta'?sugChip(type,key,'pelec_nom',histUltimoNominal(histRegistos(e),'pelec_nom'),false,'kW'):''}</div>
     </div>
     <div style="display:flex;gap:6px;margin-top:4px">
       <button class="ai-btn" style="flex:1" ${!hasData?'disabled':''} id="aiBtn_${key}" onclick="lookupNominal('${type}','${key}')">✨ Dados nominais (IA)</button>
@@ -1000,6 +1126,8 @@ function measuresHTML(e, fields, type, key) {
   const pelec_nom = parseFloat(e.pelec_nom)||null;
   const efic_nom = (pterm_nom&&pelec_nom&&pelec_nom>0) ? +(pterm_nom/pelec_nom).toFixed(2) : null;
 
+  const hrecs = type==='uta' ? histRegistos(e) : [];
+  const hnote = (k,cur) => hrecs.length ? `<div id="hn_${k}_${key}">${histNota(hrecs,k,cur)}</div>` : '';
   const computedRow = (id,label,val,unit) => (val!==null&&val!==undefined) ? `<div class="measure-row" style="background:var(--accent-dim);border-radius:var(--rsm);margin:2px 0">
     <span class="measure-label" style="color:var(--accent);font-weight:600">${label}</span>
     <span class="measure-computed" id="${id}_${key}">${val}${unit?' '+unit:''}</span>
@@ -1026,21 +1154,23 @@ function measuresHTML(e, fields, type, key) {
       <span class="measure-label">${f.l}</span>
       <input class="measure-input" type="text" inputmode="decimal" value="${esc(m[f.k]||'')}" placeholder="0.0" onchange="setMeasure('${type}','${key}','${f.k}',this.value)">
       <span class="measure-unit">${f.u}</span>
-    </div>`;
+    </div>`
+      + (hrecs.length && ['larg','alt'].includes(f.k) && !m[f.k] ? `<div style="padding:0 16px 4px">${sugChip(type,key,f.k,histUltimo(hrecs,f.k),true,'cm')}</div>` : '')
+      + (['vel','larg','alt','tsaida','tentrada'].includes(f.k) ? hnote(f.k, m[f.k]) : '');
     // After last dimension → caudal
     if((f.k==='alt'&&!isCircular)||(f.k==='diam'&&isCircular)) {
-      return row + computedRow('caudal','Caudal calc.',caudal_m3h,'m³/h');
+      return row + computedRow('caudal','Caudal calc.',caudal_m3h,'m³/h') + hnote('caudal', caudal_m3h);
     }
     // After temp entrada → ΔT + potência térmica
     if(f.k==='tentrada') {
       return row
         + (deltaT!==null ? computedRow('dt','ΔT |entrada−saída|',deltaT.toFixed(1),'°C'+modoT) : '')
-        + computedRow('pterm','Pot. térmica (ar húmido)',pterm,'kW');
+        + computedRow('pterm','Pot. térmica (ar húmido)',pterm,'kW') + hnote('pterm', pterm);
     }
     // After FP → potência elétrica + eficiência
     if(f.k==='fp') {
       return row
-        + computedRow('pelec','Pot. elétrica calc.',pelec,'kW')
+        + computedRow('pelec','Pot. elétrica calc.',pelec,'kW') + hnote('pelec', pelec)
         + computedRow('efic','Eficiência real (Pt/Pe)',efic,'')
         + (efic_nom!==null ? computedRow('efic_nom','Eficiência nominal',efic_nom,'') : '');
     }
@@ -1192,6 +1322,12 @@ window.setMeasure = (type, key, mk, val) => {
   upd('pterm', pterm, 'kW');
   upd('pelec', pelec, 'kW');
   upd('efic', efic, '');
+  // Atualizar as notas do histórico ao vivo
+  if(type==='uta') {
+    const hrecs = histRegistos(e);
+    const cur = {vel:m.vel, larg:m.larg, alt:m.alt, tsaida:m.tsaida, tentrada:m.tentrada, caudal:caudal_m3h, pterm, pelec};
+    Object.keys(cur).forEach(k=>{ const el=document.getElementById(`hn_${k}_${key}`); if(el) el.innerHTML=histNota(hrecs,k,cur[k]); });
+  }
   // Atualizar o resumo de caudais ao vivo
   if(type==='uta') { const sb=document.getElementById('s_caudais_sum'); if(sb) sb.innerHTML=caudaisRows(eqEntries(currentSession.utas)); }
 };
