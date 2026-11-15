@@ -482,6 +482,30 @@ const caudalM3h = m => { m=m||{}; const v=parseFloat(m.vel)||0,l=parseFloat(m.la
 const TIPOS_EQ = [['uta','utas'],['chiller','chillers'],['bomba','bombas'],['vaso','vasos'],['vrv','vrvs'],['quadro','quadros']];
 const TIPO_ABR = {uta:'UTA',chiller:'chiller',bomba:'bomba',vaso:'vaso',vrv:'VRV',quadro:'quadro'};
 let _novoModelo = null, _novoOpts = [];
+// Lista oficial de lojas (users/<uid>/lojasInditex, importada do Lista_das_Lojas.xlsm) — só para nome, código e localização
+let LOJAS = null, _lojaOpts = [], _lojaEscolhida = null;
+async function loadLojas() {
+  if(LOJAS) return LOJAS;
+  try { const sn = await get(ref(db, `users/${currentUser.uid}/lojasInditex/lojas`)); LOJAS = sn.val() || {}; } catch(e) { LOJAS = {}; }
+  return LOJAS;
+}
+const lojaNomeExib = L => `${L.k} ${L.n} (${L.c})`;
+function procurarLojas(q) {
+  const qt = _tok(q); if(!qt.length || !LOJAS) return [];
+  return Object.values(LOJAS).map(L=>{
+    const t = _tok(`${L.k} ${L.n} ${L.c} ${L.loc}`);
+    const hit = qt.filter(x=>t.some(y=>y===x || (x.length>=3 && y.startsWith(x)))).length;
+    return {L, sc: hit/qt.length - (/fechad/i.test(L.s)?0.5:0)};
+  }).filter(x=>x.sc>=0.99 || (qt.length>1 && x.sc>=0.66)).sort((a,b)=>b.sc-a.sc || a.L.n.length-b.L.n.length).slice(0,3).map(x=>x.L);
+}
+window.usarLoja = i => { const L=_lojaOpts[i]; if(!L) return; _lojaEscolhida=L;
+  document.getElementById('sLoja').value = lojaNomeExib(L); sugerirModelo(); };
+window.naoUsarLoja = () => { _lojaEscolhida=null; sugerirModelo(); };
+function aplicarLoja(session) {
+  const L=_lojaEscolhida; _lojaEscolhida=null; if(!L) return;
+  session.meta.codigoLoja = L.c;
+  if(!session.meta.localizacao) session.meta.localizacao = L.loc || L.m || '';
+}
 function modelosLoja(q) {
   const qt = new Set(_tok(q)); if(!qt.size) return [];
   const out = [], porLoja = new Map();
@@ -504,18 +528,22 @@ function modelosLoja(q) {
 const _resumoTipos = tipos => TIPOS_EQ.map(([t])=>(tipos[t]||[]).length?`${(tipos[t]||[]).length} ${TIPO_ABR[t]}`:'').filter(Boolean).join(', ');
 window.sugerirModelo = () => {
   const box=document.getElementById('newHist'); if(!box) return;
+  const qv=document.getElementById('sLoja').value;
+  let lojaHTML='';
+  if(_lojaEscolhida) lojaHTML=`<span class="hist-note">🏬 ${esc(lojaNomeExib(_lojaEscolhida))}${_lojaEscolhida.loc?' · '+esc(_lojaEscolhida.loc):''}${/fechad/i.test(_lojaEscolhida.s)?' · ⚠ fechada na lista (2018)':''}</span> <button class="hist-chip" onclick="naoUsarLoja()">não usar</button><br>`;
+  else { _lojaOpts=procurarLojas(qv); if(_lojaOpts.length) lojaHTML='🏬 Lista de lojas:<br>'+_lojaOpts.map((L,i)=>`<button class="hist-chip" onclick="usarLoja(${i})">${esc(lojaNomeExib(L))}${L.loc?' · '+esc(L.loc):''}${/fechad/i.test(L.s)?' · fechada':''}</button>`).join('')+'<br>'; }
+  box.innerHTML=''; box.style.display = lojaHTML ? '' : 'none';
+  const _set = h => { box.style.display=(lojaHTML||h)?'':'none'; box.innerHTML = lojaHTML + h; };
   if(_novoModelo) { const M=_novoModelo;
     const nomes=TIPOS_EQ.flatMap(([t])=>(M.tipos[t]||[]).map(x=>x.nome).filter(Boolean));
-    box.style.display='';
-    box.innerHTML=`<span class="hist-note">📚 Máquinas como em <b>${esc(M.titulo)}</b> (${M.fonte==='app'?'inspeção':'relatório'} ${_mesAno(M.data)}): ${esc(_resumoTipos(M.tipos))}${nomes.length?' — '+esc(nomes.slice(0,14).join(', '))+(nomes.length>14?'…':''):''}. Já fica ligado ao histórico.</span> <button class="hist-chip" onclick="naoUsarModelo()">não usar</button>`;
+    _set(`<span class="hist-note">📚 Máquinas como em <b>${esc(M.titulo)}</b> (${M.fonte==='app'?'inspeção':'relatório'} ${_mesAno(M.data)}): ${esc(_resumoTipos(M.tipos))}${nomes.length?' — '+esc(nomes.slice(0,14).join(', '))+(nomes.length>14?'…':''):''}. Já fica ligado ao histórico.</span> <button class="hist-chip" onclick="naoUsarModelo()">não usar</button>`);
     return; }
-  _novoOpts = modelosLoja(document.getElementById('sLoja').value);
-  if(!_novoOpts.length) { box.style.display='none'; box.innerHTML=''; return; }
-  box.style.display='';
-  box.innerHTML='📚 Já inspecionada? Toca para criar as mesmas máquinas:<br>'+_novoOpts.map((o,i)=>`<button class="hist-chip" onclick="usarModelo(${i})">${esc(o.titulo)} · ${o.fonte==='app'?'inspeção':'relatório'} ${_mesAno(o.data)} · ${esc(_resumoTipos(o.tipos))}</button>`).join('');
+  _novoOpts = modelosLoja(qv);
+  if(!_novoOpts.length) { _set(''); return; }
+  _set('📚 Já inspecionada? Toca para criar as mesmas máquinas:<br>'+_novoOpts.map((o,i)=>`<button class="hist-chip" onclick="usarModelo(${i})">${esc(o.titulo)} · ${o.fonte==='app'?'inspeção':'relatório'} ${_mesAno(o.data)} · ${esc(_resumoTipos(o.tipos))}</button>`).join(''));
 };
 window.usarModelo = i => { const M=_novoOpts[i]; if(!M) return; _novoModelo=M;
-  document.getElementById('sLoja').value = M.titulo;
+  if(!_lojaEscolhida) document.getElementById('sLoja').value = M.titulo;
   const counts={};
   SYSTEMS.forEach(s=>{ const n=(M.tipos[s.key]||[]).length; counts[s.key] = M.fonte==='app' ? Math.min(n,s.max) : (s.key==='quadro' ? 1 : Math.min(n,s.max)); });
   renderCounterGrid('counterGrid', counts, 'newCount'); sugerirModelo(); };
@@ -776,7 +804,7 @@ async function loadSessions() {
 };
 
 window.showNewSession = () => {
-  _novoModelo = null; loadHist().then(()=>sugerirModelo());
+  _novoModelo = null; _lojaEscolhida = null; Promise.all([loadHist(), loadLojas()]).then(()=>sugerirModelo());
   document.getElementById('sData').value = new Date().toISOString().split('T')[0];
   const counts = {uta:2,chiller:0,bomba:0,vaso:0,vrv:0,quadro:1};
   renderCounterGrid('counterGrid', counts, 'newCount');
@@ -791,7 +819,7 @@ window.createSession = async () => {
   const counts = {};
   SYSTEMS.forEach(s => { counts[s.key] = parseInt(document.getElementById('newCount_'+s.key)?.textContent || '0'); });
   const session = buildSession(loja, data, counts);
-  aplicarModelo(session);
+  aplicarModelo(session); aplicarLoja(session);
   const newRef = push(ref(db, `users/${currentUser.uid}/sessions`));
   await set(newRef, session);
   await openSession(newRef.key);
